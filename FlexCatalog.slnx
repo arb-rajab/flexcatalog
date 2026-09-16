@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FlexCatalog.Api/FlexCatalog.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FlexCatalog.IntegrationTests/FlexCatalog.IntegrationTests.csproj" />
+    <Project Path="tests/FlexCatalog.UnitTests/FlexCatalog.UnitTests.csproj" />
+  </Folder>
+</Solution>
