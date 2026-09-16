@@ -62,6 +62,16 @@ if (string.IsNullOrEmpty(builder.Configuration[$"{JwtOptions.SectionName}:Secret
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Without this, JwtSecurityTokenHandler silently remaps well-known
+        // short claim types on validation ("sub" -> ClaimTypes.NameIdentifier,
+        // "role" -> ClaimTypes.Role, ...) via its legacy inbound claim map.
+        // FlexClaimTypes.Role ("role") and ITenantContext.UserId ("sub")
+        // read the literal short names JwtTokenService actually issues, so
+        // leaving the default mapping on makes RequireClaim("role", "Admin")
+        // never match -- every write request gets a false 403, regardless
+        // of the caller's actual role.
+        options.MapInboundClaims = false;
+
         var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
         options.TokenValidationParameters = new TokenValidationParameters
         {
