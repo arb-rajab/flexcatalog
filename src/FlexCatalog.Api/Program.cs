@@ -28,9 +28,15 @@ builder.Services.AddHostedService<DataSeeder>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, HttpTenantContext>();
 
+// ProductRepository depends on ITenantContext (per-request), so it must
+// stay Scoped. UserRepository/TenantRepository hold no per-request state
+// (they only wrap the singleton MongoContext) and are registered as
+// Singleton specifically so DataSeeder -- a Singleton IHostedService --
+// can depend on them directly without violating ASP.NET Core's
+// singleton-cannot-consume-scoped validation.
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<ITenantRepository, TenantRepository>();
+builder.Services.AddSingleton<IUserRepository, UserRepository>();
+builder.Services.AddSingleton<ITenantRepository, TenantRepository>();
 
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
