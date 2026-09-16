@@ -44,12 +44,25 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 
-var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
-var jwtSecret = jwtSection["Secret"] ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
+// Fail fast at startup if misconfigured. The actual value used for
+// signature validation is re-read from configuration *inside* the
+// AddJwtBearer delegate below rather than captured here: that delegate
+// runs lazily (when JwtBearerOptions are first resolved, after
+// builder.Build()), which matters for WebApplicationFactory-based tests --
+// their configuration overrides are only merged in at Build() time, so a
+// value captured in a local variable up here would still be the
+// pre-override value even though JwtTokenService (which resolves
+// IOptions<JwtOptions> lazily via DI) would sign with the overridden one,
+// causing every issued token to fail validation with a spurious 401.
+if (string.IsNullOrEmpty(builder.Configuration[$"{JwtOptions.SectionName}:Secret"]))
+{
+    throw new InvalidOperationException("Jwt:Secret is not configured.");
+}
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -58,7 +71,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSection["Issuer"],
             ValidAudience = jwtSection["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Secret"]!)),
             ClockSkew = TimeSpan.FromSeconds(30),
         };
     });
