@@ -1,6 +1,9 @@
 # Handoff
 
-Snapshot at initial delivery (PR #1, merged into `main`).
+Snapshot at initial delivery (PR #1, merged into `main`). See "Session 2"
+below for the most recent work and the current "Remaining backlog"
+section -- read that one, not this snapshot's now-stale references to
+what was outstanding at the time.
 
 ## What shipped
 
@@ -166,8 +169,115 @@ backlog, handoff (this file), release notes, retirement plan.
   conclusion `success`) and `pull_request_read` reported
   `mergeable_state: "clean"`.
 
-## Remaining backlog (full list in `backlog.md`)
+## Session 2 (2026-09-17): Security hardening + faceted navigation
 
-Highest priority: refuse-to-start-on-known-placeholder-secret check,
-login rate limiting, independent-branch faceted navigation. See
-`backlog.md` for the complete, prioritized list.
+Backlog cleanup session, worked in the priority order set out in the
+session brief: security hardening first, faceted navigation second,
+everything else only if time allowed.
+
+### Completed
+
+1. **Refuse-to-start on placeholder JWT secret** (closes `risk.md` R2).
+   `Auth/JwtSecretGuard.EnsureNotPlaceholder`, called from `Program.cs`
+   right where the existing empty-secret check already was; throws only
+   when both "running in `Production`" and "secret equals the exact
+   known `appsettings.Development.json` placeholder string" are true.
+   Extracted as a static, host-independent method specifically so it's
+   unit-testable (`JwtSecretGuardTests`, 4 tests) without needing a full
+   ASP.NET host -- same pattern this repo already uses for
+   `ProductSearchService.BuildStructuredMatchDocument`.
+2. **Login rate limiting** (closes `risk.md` R4). `POST /api/auth/login`
+   now enforces a fixed-window limit via ASP.NET Core's built-in rate
+   limiter: **5 attempts / 60 seconds, partitioned per client IP, HTTP
+   429 with no queueing past the limit**
+   (`Infrastructure/LoginRateLimiting`). Pinned by a unit test exercising
+   the same `FixedWindowRateLimiter` configuration directly
+   (`LoginRateLimitingTests`) and an integration test proving the actual
+   endpoint returns 429 after the 6th rapid attempt. Known limitation,
+   documented in `security.md`: per-IP partitioning doesn't slow a
+   distributed (many-IP) attack.
+3. **JWT revocation / refresh-token model**: evaluated and explicitly
+   **re-affirmed as deferred**, not half-shipped -- see `backlog.md` item
+   3 for what "fully done" would require and the recommendation to pick
+   *one* of (revocation-only deny-list) or (full refresh-token flow) next
+   time, not both at once.
+4. **Independent-branch faceted navigation** (ADR 0004, closes `risk.md`
+   R7 for the category and attribute facets). The category facet and
+   each attribute facet (brand/sizes/colors/author) now compute counts
+   net of every filter except their own -- filtering to one brand still
+   shows the others as options. Required restructuring the aggregation
+   pipeline (`$text` moved to its own mandatory top-level `$match`,
+   since MongoDB disallows `$text` inside a `$facet` sub-pipeline; every
+   other filter moved into per-branch `$match` stages via the new
+   `BuildStructuredMatchDocument(excludeCategory:, excludeAttributeKey:)`).
+   The price-range facet is a deliberate, documented exception, still net
+   of the full filter. Pinned by new/updated
+   `ProductSearchServiceQueryBuildingTests` (pipeline shape, no DB) and
+   two new `SearchFacetsTests` (end-to-end against real Mongo).
+5. **Design doc for the two lowest-priority items** (structured
+   logging/tracing, database-per-tenant scaling), rather than a rushed
+   partial implementation of either: **ADR 0005**. Concrete proposed
+   approach and trigger conditions for both; nothing implemented.
+
+### Verification performed this session
+
+- `dotnet build FlexCatalog.slnx --configuration Release`: clean, 0
+  warnings, after every change (this session installed .NET SDK 10.0.112
+  via `apt-get install dotnet-sdk-10.0` -- this remote-execution sandbox
+  didn't have `dotnet` preinstalled at session start, unlike the sandbox
+  `CLAUDE.md`'s existing notes assume; worth knowing for the next session
+  in an environment like this one).
+- `dotnet format FlexCatalog.slnx --verify-no-changes --severity warn`:
+  clean after every change.
+- `dotnet test tests/FlexCatalog.UnitTests`: 51/51 passing (was 38 at
+  last handoff; +13 this session: 4 `JwtSecretGuardTests`, 2
+  `LoginRateLimitingTests`, 7 new/rewritten
+  `ProductSearchServiceQueryBuildingTests`).
+- DI-graph-only host-start check (`ASPNETCORE_ENVIRONMENT=Development`,
+  `Mongo__ConnectionString=mongodb://localhost:1/`, per `CLAUDE.md`): ran
+  after the auth-adjacent changes (items 1-2); host started cleanly and
+  failed only on the expected Mongo connection timeout, confirming no DI
+  lifetime regression, before moving on to faceted navigation.
+- **Integration suite (Testcontainers, 19 tests -- 16 pre-existing + 3
+  new this session) was not run in this sandbox.** Docker Hub's blob CDN
+  (`production.cloudfront.docker.com`) is proxy-blocked here, confirmed
+  directly (`docker pull hello-world` -> `403 Forbidden`), same root
+  cause `testing.md` already documents -- notably, `dockerd` itself
+  *could* be started manually in this particular sandbox (`service
+  docker start` failed on an unrelated `ulimit` permission error, but
+  running `dockerd` directly worked and produced a healthy daemon); the
+  CDN block is what actually stops the pull, not the daemon. This is
+  trusted to CI per this project's established convention -- **no PR was
+  opened this session** (not asked for), so CI has not yet run against
+  this branch; the next step for whoever picks this up is to open a PR
+  (or ask this session/a follow-up to) so CI actually verifies the
+  integration suite, particularly the two new independent-branch
+  faceting tests and the new rate-limit test, none of which have been
+  confirmed against a real MongoDB yet.
+- All work is committed and pushed to
+  `claude/flexcatalog-security-hardening-rfb7or` (three commits: security
+  hardening, faceted navigation, ADR 0005).
+
+## Remaining backlog -- flagged, current as of Session 2 (see `backlog.md` for full detail)
+
+**Not yet verified by CI** (highest-priority follow-up, not a design
+gap): the 3 tests added this session need a real green CI run once a PR
+exists -- see "Verification performed this session" above.
+
+**Still open, in priority order**:
+1. JWT revocation / refresh-token model (`backlog.md` item 3) --
+   deliberately deferred, not started. Pick one design (deny-list or
+   refresh-token flow), not both, next time.
+2. Structured logging + OpenTelemetry tracing (`backlog.md` item 8) --
+   design proposed in ADR 0005 Part 1, not implemented; needs real
+   infrastructure to verify against, which this sandbox lacked.
+3. Database-per-tenant migration path (`backlog.md` item 6) -- design
+   proposed in ADR 0005 Part 2 (trigger conditions + per-tenant migration
+   approach), not implemented; has an explicit dependency on (2) for
+   noisy-neighbor *measurement* before it's worth starting.
+4. Configurable/derived facet field list (`backlog.md` item 5) -- needs a
+   bounded-cardinality safety check first; not attempted.
+5. Everything else in `backlog.md` (platform-admin cross-tenant
+   reporting, seed-data reset tooling, product-feature scope items,
+   load/perf testing, OpenAPI contract tests) -- untouched this session,
+   unchanged priority.
