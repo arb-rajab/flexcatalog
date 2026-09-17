@@ -50,7 +50,11 @@ rather than done now.
 6. **Database-per-tenant migration path**, for if/when a tenant's data
    volume or isolation requirements outgrow the shared-collection model
    (ADR 0001 documents this as the intended next step, not a hypothetical
-   one).
+   one). **Design doc added this session, not implemented** -- concrete
+   trigger conditions and a per-tenant (not flag-day) migration approach
+   are in ADR 0005, Part 2, including the specific reason `DataSeeder`/
+   `MongoIndexInitializer` are the nontrivial part (they're exactly where
+   the two DI-lifetime bugs in `handoff.md` originated).
 7. **Platform-admin, cross-tenant reporting role.** Explicitly out of
    scope today (ADR 0001) -- the repository layer has no method that
    queries across tenants, by design; adding one would be a deliberate,
@@ -58,7 +62,15 @@ rather than done now.
 
 ## Operability
 8. **Structured logging + basic OpenTelemetry tracing.** Would be the
-   first thing added in a real production-hardening pass (R9).
+   first thing added in a real production-hardening pass (R9). **Design
+   doc added this session, not implemented** -- see ADR 0005, Part 1, for
+   the proposed approach (JSON console logging, W3C trace-context
+   correlation, OpenTelemetry via the MongoDB driver's existing
+   `DiagnosticSource` support) and instrumentation priority order. Held
+   back from implementation specifically because it's best verified by
+   observing real emitted traces/logs, which needs infra this sandbox
+   doesn't have (see `testing.md`) -- attempting it build-only risked the
+   same half-shipped outcome item 3 was deliberately avoiding.
 9. **Seed-data reset endpoint or CLI** for demo/QA environments, instead
    of relying on "seeding only happens once, when the tenants collection
    is empty."
