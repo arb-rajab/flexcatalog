@@ -5,13 +5,30 @@ rather than done now.
 
 ## Security hardening
 1. **Refuse to start in `Production` if `Jwt:Secret` matches the known
-   development placeholder value.** Cheap, closes R2 in `risk.md`.
+   development placeholder value.** **Done** (this session) --
+   `JwtSecretGuard.EnsureNotPlaceholder`, called from `Program.cs`,
+   pinned by `JwtSecretGuardTests`. Closes R2 in `risk.md`.
 2. **Rate limiting on `POST /api/auth/login`** (ASP.NET Core's built-in
-   rate limiting middleware is enough). Closes R4.
+   rate limiting middleware is enough). **Done** (this session) -- fixed
+   window, 5 attempts/60s per client IP, 429 on excess
+   (`LoginRateLimiting`, wired in `Program.cs`/`AuthEndpoints.cs`), pinned
+   by `LoginRateLimitingTests` (unit) and an integration test asserting
+   the 6th rapid attempt gets 429. Closes R4.
 3. **JWT revocation / short-lived-token-plus-refresh-token model.**
-   Deferred because it meaningfully increases complexity (token storage,
-   refresh flow, rotation) for a demo whose current 60-minute token
-   lifetime is an accepted tradeoff (R3).
+   **Re-affirmed as explicitly deferred this session** (not half-shipped):
+   evaluated and consciously not attempted, rather than starting a
+   partial implementation under time pressure. "Fully done" here would
+   require, at minimum: a revocation store (in Mongo or a cache) checked
+   on every authenticated request, a refresh-token issuance/rotation
+   endpoint, refresh-token storage with reuse detection, and updated
+   integration coverage in `TenantIsolationTests`-adjacent tests to prove
+   revocation can't be bypassed cross-tenant -- each a meaningful, review-
+   worthy change in its own right, not something to bolt on inside a
+   session already touching startup/auth wiring. Current mitigation
+   remains the capped 60-minute token lifetime (R3), which is an accepted
+   tradeoff for this system's scope, not a gap silently left unmentioned.
+   Next session: pick *one* of (a) revocation-only via a short deny-list,
+   or (b) full refresh-token flow -- don't attempt both at once.
 
 ## Search
 4. **Independent-branch faceted navigation** (ADR 0004) -- each facet

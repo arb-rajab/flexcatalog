@@ -1,10 +1,12 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using FlexCatalog.Api.Auth;
 using FlexCatalog.Api.Endpoints;
 using FlexCatalog.Api.Infrastructure;
 using FlexCatalog.Api.Repositories;
 using FlexCatalog.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using MongoDB.Driver;
 using Scalar.AspNetCore;
@@ -54,10 +56,19 @@ builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
 // pre-override value even though JwtTokenService (which resolves
 // IOptions<JwtOptions> lazily via DI) would sign with the overridden one,
 // causing every issued token to fail validation with a spurious 401.
-if (string.IsNullOrEmpty(builder.Configuration[$"{JwtOptions.SectionName}:Secret"]))
+var configuredJwtSecret = builder.Configuration[$"{JwtOptions.SectionName}:Secret"];
+if (string.IsNullOrEmpty(configuredJwtSecret))
 {
     throw new InvalidOperationException("Jwt:Secret is not configured.");
 }
+
+// Closes risk.md R2: a non-empty secret that is still the known dev
+// placeholder must not silently boot in Production. Checked here (once,
+// at startup gating) rather than inside the lazy AddJwtBearer delegate
+// below -- this is a one-shot fail-fast check, not a value reused later
+// for signature validation, so it doesn't fall into the stale-capture
+// trap documented above the AddJwtBearer call.
+JwtSecretGuard.EnsureNotPlaceholder(configuredJwtSecret, builder.Environment.IsProduction());
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -89,6 +100,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(ProductEndpoints.AdminPolicy, policy => policy.RequireClaim(FlexClaimTypes.Role, nameof(FlexCatalog.Api.Domain.UserRole.Admin)));
 
+// Closes risk.md R4. Threshold and rationale documented once in
+// LoginRateLimiting -- keep that in sync with security.md if changed.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(LoginRateLimiting.PolicyName, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = LoginRateLimiting.PermitLimit,
+                Window = LoginRateLimiting.Window,
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+});
+
 builder.Services.AddExceptionHandler<AppExceptionHandler>();
 builder.Services.AddProblemDetails();
 
@@ -114,6 +142,8 @@ if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();

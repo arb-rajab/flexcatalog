@@ -13,7 +13,14 @@ Two test projects, matching the two things worth testing differently:
 
 ## What's covered
 
-Unit tests (34 tests at time of writing):
+Unit tests (44 tests at time of writing):
+- `JwtSecretGuardTests` -- the Production placeholder-secret startup
+  guard (R2): throws only when both "is Production" and "is exactly the
+  known placeholder" are true.
+- `LoginRateLimitingTests` -- pins the exact login rate-limit threshold
+  (R4) by exercising the same `FixedWindowRateLimiter` configuration
+  `Program.cs` wires up, and that separate partitions (IPs) don't share
+  an allowance.
 - `ProductValidationTests` -- category/attribute-shape matching
   invariant (ADR 0002).
 - `ProductSearchServiceQueryBuildingTests` -- the aggregation
@@ -39,7 +46,8 @@ Unit tests (34 tests at time of writing):
 
 Integration tests:
 - `AuthEndpointsTests` -- login success/failure, unauthenticated access
-  to a protected endpoint returns 401.
+  to a protected endpoint returns 401, and (R4) exceeding the login rate
+  limit within one window returns 429.
 - `TenantIsolationTests` -- **the load-bearing test suite for ADR 0001**:
   a product created by one tenant's admin is not readable by ID, not
   returned by search, and not deletable, from another tenant's
@@ -77,6 +85,16 @@ and Docker pre-installed, so `ci.yml` runs this same integration suite
 for real on every push/PR. The PR for this repository is the actual first
 real-world verification of these tests, and CI was driven to green as
 part of delivering this work (see `handoff.md` for the confirmed result).
+
+**A later session (security-hardening pass) hit a stricter variant of
+this**: that sandbox's `docker` CLI was present but there was no daemon
+at all (`dockerd` refused to start -- `ulimit: error setting limit:
+Operation not permitted`), not just an egress block on Docker Hub's CDN.
+`docker info` (or trying `service docker start` and checking again) tells
+you which case you're in faster than debugging a pull failure does. Either
+way the fallback is the same: trust CI, and use the DI-graph-only
+host-start check (documented in `CLAUDE.md`) plus unit tests as the
+local substitute for anything auth/DI-wiring-shaped.
 
 ## Running the tests yourself
 
