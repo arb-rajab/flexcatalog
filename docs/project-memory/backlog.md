@@ -31,11 +31,16 @@ rather than done now.
    or (b) full refresh-token flow -- don't attempt both at once.
 
 ## Search
-4. **Independent-branch faceted navigation** (ADR 0004) -- each facet
-   computed net of every filter except its own, so switching a brand
-   filter still shows the other available brands' counts. Deferred
-   because it multiplies the aggregation pipeline's branch count and
-   wasn't needed to demonstrate the core `$facet` pattern.
+4. **Independent-branch faceted navigation** (ADR 0004). **Done** (this
+   session) -- the category facet and each attribute facet (brand/sizes/
+   colors/author) are now computed net of every filter except their own,
+   so switching a brand filter still shows the other available brands'
+   counts; `ProductSearchService.BuildStructuredMatchDocument`'s
+   `excludeCategory`/`excludeAttributeKey` parameters, pinned by
+   `ProductSearchServiceQueryBuildingTests` (pipeline shape) and two new
+   `SearchFacetsTests` (end-to-end, real Mongo). The price-range facet
+   stays net of the full filter -- a deliberate, documented exception
+   (ADR 0004), not an oversight.
 5. **Configurable/derived facet field list**, instead of the current
    hardcoded `["brand", "sizes", "colors", "author"]`. Would need a
    bounded-cardinality check (faceting on a field with thousands of
