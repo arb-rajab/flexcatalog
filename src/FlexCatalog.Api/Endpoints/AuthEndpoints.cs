@@ -1,4 +1,5 @@
 using FlexCatalog.Api.Dtos;
+using FlexCatalog.Api.Infrastructure;
 using FlexCatalog.Api.Services;
 
 namespace FlexCatalog.Api.Endpoints;
@@ -15,6 +16,7 @@ public static class AuthEndpoints
             return Results.Ok(result);
         })
         .AllowAnonymous()
+        .RequireRateLimiting(LoginRateLimiting.PolicyName)
         .WithName("Login")
         .WithSummary("Exchange tenant-scoped credentials for a JWT.");
     }

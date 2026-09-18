@@ -13,17 +13,26 @@ Two test projects, matching the two things worth testing differently:
 
 ## What's covered
 
-Unit tests (34 tests at time of writing):
+Unit tests (51 tests at time of writing):
+- `JwtSecretGuardTests` -- the Production placeholder-secret startup
+  guard (R2): throws only when both "is Production" and "is exactly the
+  known placeholder" are true.
+- `LoginRateLimitingTests` -- pins the exact login rate-limit threshold
+  (R4) by exercising the same `FixedWindowRateLimiter` configuration
+  `Program.cs` wires up, and that separate partitions (IPs) don't share
+  an allowance.
 - `ProductValidationTests` -- category/attribute-shape matching
   invariant (ADR 0002).
 - `ProductSearchServiceQueryBuildingTests` -- the aggregation
-  pipeline-building logic (`BuildMatchDocument`, `BuildFacetStage`)
-  exercised as pure BSON-document construction: category/price/stock
-  filters, text search, attribute filter `$in` clauses, **rejection of
-  unsafe attribute filter keys** (operator-injection prevention, ADR
-  0004), pagination math, sort-order mapping. These are exposed
-  `internal` + `InternalsVisibleTo` specifically so this logic is testable
-  without a live database.
+  pipeline-building logic (`BuildStructuredMatchDocument`,
+  `BuildTextMatchDocument`, `BuildFacetStage`) exercised as pure
+  BSON-document construction: category/price/stock filters, attribute
+  filter `$in` clauses, **rejection of unsafe attribute filter keys**
+  (operator-injection prevention, ADR 0004), pagination math, sort-order
+  mapping, and (independent-branch faceting) that each facet branch's
+  `$match` excludes only its own filter component while keeping every
+  other filter. These are exposed `internal` + `InternalsVisibleTo`
+  specifically so this logic is testable without a live database.
 - `ProductServiceTests` -- create/update/delete/inventory-adjust business
   rules (duplicate SKU -> 409, mismatched attributes -> 400, negative
   inventory -> 400, not-found -> 404), using Moq against
@@ -39,7 +48,8 @@ Unit tests (34 tests at time of writing):
 
 Integration tests:
 - `AuthEndpointsTests` -- login success/failure, unauthenticated access
-  to a protected endpoint returns 401.
+  to a protected endpoint returns 401, and (R4) exceeding the login rate
+  limit within one window returns 429.
 - `TenantIsolationTests` -- **the load-bearing test suite for ADR 0001**:
   a product created by one tenant's admin is not readable by ID, not
   returned by search, and not deletable, from another tenant's
@@ -48,8 +58,11 @@ Integration tests:
   Viewer forbidden from creating (403); duplicate SKU conflict (409);
   inventory adjustment below zero rejected (400).
 - `SearchFacetsTests` -- category + price range filtering, attribute
-  filtering (brand), category facet counts sum to total count, in-stock
-  filtering.
+  filtering (brand), category facet counts sum to total count (when no
+  category filter is applied), in-stock filtering, and
+  (independent-branch faceting) that the brand/category facets still
+  list options excluded by the current filter (e.g. filtering to
+  brand=Acme still lists "Pixel" in the brand facet).
 
 All integration tests run against the demo tenants/users seeded by
 `DataSeeder` at startup (`admin@acme.test` / `viewer@acme.test` /
@@ -78,6 +91,22 @@ for real on every push/PR. The PR for this repository is the actual first
 real-world verification of these tests, and CI was driven to green as
 part of delivering this work (see `handoff.md` for the confirmed result).
 
+**A later session (security-hardening pass) confirmed the same root
+cause via a different symptom**: `service docker start` failed there
+(`ulimit: error setting limit: Operation not permitted`, from the init
+script, not the daemon itself) -- but running `dockerd` directly in the
+background started a working daemon (`docker info` succeeded). The pull
+still failed exactly as described above: `docker pull hello-world` hit
+`production.cloudfront.docker.com` and got `403 Forbidden` from the
+proxy. So if `docker info` reports no daemon, don't stop there --
+`service docker start` can fail on an environment quirk even when
+`dockerd` itself works fine; try `dockerd &` (or your environment's
+equivalent) before concluding Docker isn't usable at all. Either way,
+once you confirm the CDN block (via a quick `docker pull hello-world` or
+the proxy status endpoint), the fallback is the same: trust CI, and use
+the DI-graph-only host-start check (documented in `CLAUDE.md`) plus unit
+tests as the local substitute for anything auth/DI-wiring-shaped.
+
 ## Running the tests yourself
 
 ```bash
@@ -88,6 +117,4 @@ dotnet test tests/FlexCatalog.IntegrationTests/FlexCatalog.IntegrationTests.cspr
 ## What's not covered (see backlog.md)
 
 - Load/performance testing against a realistically-sized catalog.
-- The independent-branch faceting behavior described as a limitation in
-  ADR 0004 -- because it isn't implemented, there's nothing to test yet.
 - Contract/schema tests against the OpenAPI document.

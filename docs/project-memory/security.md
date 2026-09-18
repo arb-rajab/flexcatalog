@@ -10,17 +10,28 @@
   password" -- prevents username enumeration via the login endpoint.
 - Two roles (`Admin`, `Viewer`), enforced via `RequireClaim("role", ...)`
   policy on write endpoints. No per-resource ACL beyond tenant + role.
+- `POST /api/auth/login` is rate-limited: 5 attempts per 60-second fixed
+  window, partitioned per client IP, HTTP 429 with no queueing past the
+  limit (`FlexCatalog.Api.Infrastructure.LoginRateLimiting`, ASP.NET
+  Core's built-in rate limiter). Closes risk.md R4. Change the threshold
+  in `LoginRateLimiting` and here together if it's ever revisited.
+  Known limitation: partitioning is per-IP, so a distributed attack
+  spread across many source IPs isn't slowed by this alone.
 
 ## Secrets
 
 - `Jwt:Secret` **must** be overridden via environment variable
   (`Jwt__Secret`) or a secret manager in any non-local environment.
   `Program.cs` throws at startup if it's empty or missing, so a
-  deployment can't silently run unsigned -- but nothing currently stops a
-  deployment from reusing the development placeholder value if an
-  operator ignores this document. That is a manual operational discipline
-  requirement, not something the code enforces, and is called out
-  explicitly here for that reason.
+  deployment can't silently run unsigned. It also now throws at startup
+  (`JwtSecretGuard.EnsureNotPlaceholder`) if the app is running in
+  `Production` and the configured secret is exactly the known
+  `appsettings.Development.json` placeholder value -- closes risk.md R2.
+  This only catches *that specific known string*; nothing enforces that
+  an operator-chosen replacement is actually strong. That residual case
+  is a manual operational discipline requirement, not something the code
+  can meaningfully check, and is called out explicitly here for that
+  reason.
 - The value committed in `appsettings.Development.json` is a placeholder
   string, clearly commented as local-dev-only, and is not secret-scanned
   as a real credential because it isn't one -- it's meaningless outside a
@@ -79,9 +90,9 @@ repository-level unit test.
 
 ## What's explicitly not implemented (see risk.md / backlog.md for follow-up)
 
-- No rate limiting on `/api/auth/login` (brute-force mitigation).
 - No JWT revocation list -- a compromised token is valid until it
-  naturally expires (default 60 minutes).
+  naturally expires (default 60 minutes). Explicitly deferred rather than
+  half-shipped; see `backlog.md` item 3 for the reasoning.
 - No audit log of who changed what product/inventory record.
 - No CSRF concerns apply (this is a bearer-token API with no cookie-based
   session, consumed by non-browser or SPA clients that attach the

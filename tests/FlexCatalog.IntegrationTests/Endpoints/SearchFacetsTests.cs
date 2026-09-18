@@ -71,4 +71,47 @@ public class SearchFacetsTests(MongoContainerFixture mongoFixture) : Integration
 
         Assert.All(result!.Items, p => Assert.True(p.InStock));
     }
+
+    [Fact]
+    public async Task Search_AttributeFacet_IsIndependentOfItsOwnFilter()
+    {
+        // Independent-branch faceting (ADR 0004): filtering to brand=Acme
+        // must narrow the *results*, but the brand facet itself should
+        // still list the other available brand (Pixel, from the seeded
+        // "Pixel Vision Camera") so a UI can offer switching brands.
+        var token = await LoginAsync("admin@acme.test");
+        using var client = AuthenticatedClient(token);
+
+        var response = await client.PostAsJsonAsync("/api/products/search", new ProductSearchRequest(
+            Attributes: new Dictionary<string, List<string>> { ["brand"] = ["Acme"] }));
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ProductSearchResponse>();
+
+        Assert.All(result!.Items, p => Assert.Equal("Acme", ((ElectronicsAttributes)p.Attributes).Brand));
+
+        var brandFacet = result.Facets.Attributes["brand"];
+        Assert.Contains(brandFacet, f => f.Value == "Acme");
+        Assert.Contains(brandFacet, f => f.Value == "Pixel");
+    }
+
+    [Fact]
+    public async Task Search_CategoryFacet_IsIndependentOfCategoryFilter()
+    {
+        // UrbanThread has both Apparel (2 products) and Books (1 product)
+        // seeded. Filtering to Apparel must narrow the results, but the
+        // category facet should still show Books as an available option.
+        var token = await LoginAsync("admin@urbanthread.test");
+        using var client = AuthenticatedClient(token);
+
+        var response = await client.PostAsJsonAsync("/api/products/search", new ProductSearchRequest(
+            CategoryType: CategoryType.Apparel));
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<ProductSearchResponse>();
+
+        Assert.All(result!.Items, p => Assert.Equal(CategoryType.Apparel, p.CategoryType));
+        Assert.Contains(result.Facets.Categories, c => c.Value == "Apparel");
+        Assert.Contains(result.Facets.Categories, c => c.Value == "Books");
+    }
 }
