@@ -25,7 +25,7 @@ public sealed class FlexCatalogApiFactory(string mongoConnectionString, string? 
                 ["Mongo:DatabaseName"] = DatabaseName,
                 // Tests that don't care about event streaming leave this
                 // pointed at a default that's never actually reachable --
-                // harmless, since publishing is fire-and-forget (ADR 0005)
+                // harmless, since publishing is fire-and-forget (ADR 0006)
                 // and no assertion in those tests depends on it succeeding.
                 ["Nats:Url"] = natsUrl ?? "nats://localhost:4222",
                 ["Jwt:Secret"] = "integration-test-signing-secret-at-least-32-bytes",

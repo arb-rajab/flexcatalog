@@ -8,7 +8,7 @@ namespace FlexCatalog.InventoryProjector;
 /// own MongoDB collection ("productInventoryProjection") in the same
 /// database, which is what makes it observably a *projection derived from
 /// the event stream* rather than a copy of the source-of-truth data (ADR
-/// 0005). Deliberately holds only the fields the two events carry -- this is
+/// 0006). Deliberately holds only the fields the two events carry -- this is
 /// a demonstration read-model, not a replacement for `GET /api/products/{id}`.
 /// </summary>
 public sealed class ProductProjection

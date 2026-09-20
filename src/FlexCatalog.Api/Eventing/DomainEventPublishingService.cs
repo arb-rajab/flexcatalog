@@ -15,7 +15,7 @@ namespace FlexCatalog.Api.Eventing;
 /// and logged, never rethrown: this loop must keep draining the channel for
 /// the life of the app regardless of the broker's availability, and a
 /// publish failure must never be visible to the request that already
-/// completed its MongoDB write (ADR 0005).
+/// completed its MongoDB write (ADR 0006).
 /// </summary>
 public sealed class DomainEventPublishingService(
     DomainEventChannel channel,

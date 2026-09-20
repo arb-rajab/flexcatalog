@@ -6,7 +6,7 @@ namespace FlexCatalog.Api.Eventing;
 /// <summary>
 /// The in-memory hand-off point between the request path and
 /// <see cref="DomainEventPublishingService"/>. Bounded and configured to
-/// drop the oldest queued event rather than block a writer -- see ADR 0005:
+/// drop the oldest queued event rather than block a writer -- see ADR 0006:
 /// publishing a domain event must never be able to slow down or fail the
 /// MongoDB write it follows. Registered as a Singleton so the Scoped
 /// <see cref="ChannelDomainEventPublisher"/> (used from request-scoped

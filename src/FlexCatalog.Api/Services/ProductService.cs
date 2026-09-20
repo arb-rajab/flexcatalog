@@ -55,7 +55,7 @@ public sealed class ProductService(IProductRepository repository, IDomainEventPu
 
         await repository.InsertAsync(product, ct);
 
-        // Fire-and-forget (ADR 0005): published after the write already
+        // Fire-and-forget (ADR 0006): published after the write already
         // succeeded, using the tenantId InsertAsync just stamped onto
         // `product` from the validated JWT -- never a client-supplied value.
         events.Publish(EventTypes.ProductCreated, product.TenantId, new ProductCreatedPayload(
@@ -125,7 +125,7 @@ public sealed class ProductService(IProductRepository repository, IDomainEventPu
 
         await repository.ReplaceAsync(existing, ct);
 
-        // Fire-and-forget (ADR 0005): published after the write already
+        // Fire-and-forget (ADR 0006): published after the write already
         // succeeded, using the tenantId ReplaceAsync just stamped onto
         // `existing` from the validated JWT -- never a client-supplied value.
         events.Publish(EventTypes.InventoryAdjusted, existing.TenantId, new InventoryAdjustedPayload(

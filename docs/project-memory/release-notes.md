@@ -4,7 +4,7 @@
 
 Adds a real, if intentionally small, event-streaming/pub-sub sample
 alongside the existing REST/MongoDB core -- additive, not a rearchitecture
-(ADR 0005).
+(ADR 0006).
 
 ### Added
 - `ProductCreated` and `InventoryAdjusted` domain events, published
@@ -15,7 +15,7 @@ alongside the existing REST/MongoDB core -- additive, not a rearchitecture
 - NATS (core pub/sub, not JetStream) as the broker, chosen over Kafka
   (disproportionate operational weight for this scope) and over
   RabbitMQ/Redis (already used elsewhere in this portfolio for the
-  distinct task-queue pattern) -- see ADR 0005 for the full reasoning.
+  distinct task-queue pattern) -- see ADR 0006 for the full reasoning.
 - `FlexCatalog.Contracts`: a small shared class library defining the wire
   envelope and per-event payloads, referenced by both the publisher and
   the consumer so the two independent processes agree on schema without
@@ -36,7 +36,7 @@ alongside the existing REST/MongoDB core -- additive, not a rearchitecture
 
 ### Known limitations at this release
 - At-most-once delivery, no replay: an event published while the
-  projector is down is lost, by design (see ADR 0005's "Consequences").
+  projector is down is lost, by design (see ADR 0006's "Consequences").
 - The projection is a convenience read-model; nothing in the existing REST
   API reads from it, and MongoDB's `products` collection remains the
   single source of truth.

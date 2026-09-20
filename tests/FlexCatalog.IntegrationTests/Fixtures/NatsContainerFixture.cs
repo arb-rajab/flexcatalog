@@ -5,7 +5,7 @@ namespace FlexCatalog.IntegrationTests.Fixtures;
 /// <summary>
 /// One real nats-server, started via Testcontainers, shared across every
 /// test class in the "EventStreaming collection" -- mirrors
-/// <see cref="MongoContainerFixture"/>. Proves ADR 0005's design against a
+/// <see cref="MongoContainerFixture"/>. Proves ADR 0006's design against a
 /// real broker rather than an in-memory stand-in.
 ///
 /// Requires Docker. Same sandbox caveat as MongoContainerFixture: pulling
@@ -23,7 +23,7 @@ public sealed class NatsContainerFixture : IAsyncLifetime
 
 /// <summary>
 /// Both containers together, for tests that need to prove behavior spanning
-/// MongoDB and NATS (i.e. the event-streaming path, ADR 0005) rather than
+/// MongoDB and NATS (i.e. the event-streaming path, ADR 0006) rather than
 /// either one alone.
 /// </summary>
 [CollectionDefinition("EventStreaming collection")]

@@ -17,7 +17,7 @@
   MongoDB and NATS containers.
 - **Event streaming**: NATS (core pub/sub), `NATS.Client.Core` -- one
   additive, fire-and-forget side channel off the REST/MongoDB core; see
-  "Event streaming (ADR 0005)" below.
+  "Event streaming (ADR 0006)" below.
 
 ## Layering
 
@@ -49,7 +49,7 @@ Dependencies point one direction: Endpoints -> Services -> Repositories ->
 Infrastructure. Nothing in `Domain` or `Repositories` depends on
 `Endpoints` or ASP.NET Core request types.
 
-Two more projects sit alongside `FlexCatalog.Api`, added by ADR 0005:
+Two more projects sit alongside `FlexCatalog.Api`, added by ADR 0006:
 `FlexCatalog.Contracts` (event envelope/payload records shared by
 publisher and consumer, no logic) and `FlexCatalog.InventoryProjector` (the
 independent consumer -- its own `Program.cs`, its own MongoDB connection,
@@ -110,7 +110,7 @@ connection string or secret is hardcoded outside
 `appsettings.Development.json`, which carries only a local-dev-only
 placeholder (see `security.md`).
 
-## Event streaming (ADR 0005)
+## Event streaming (ADR 0006)
 
 Additive to everything above, not a replacement for any of it: the
 REST/MongoDB core in the request-flow diagram above is unchanged and does
@@ -135,7 +135,7 @@ ProductService.CreateAsync / .AdjustInventoryAsync
 per-event payload records + event-type constants) referenced by both
 `FlexCatalog.Api` (the only publisher) and `FlexCatalog.InventoryProjector`
 (the only consumer today) -- the two processes agree on wire schema without
-either depending on the other's code. See ADR 0005 for the full broker
+either depending on the other's code. See ADR 0006 for the full broker
 choice reasoning, the fire-and-forget design, and its consequences
 (at-most-once delivery, no replay, the projection is a convenience
 read-model that nothing else depends on).
@@ -149,7 +149,7 @@ read-model that nothing else depends on).
 - No task queue (RabbitMQ/Redis-queue style point-to-point work
   distribution) -- inventory adjustment is a synchronous read-modify-write
   with no unit of work to hand off to exactly one worker. The
-  event-streaming addition above (ADR 0005) is a deliberately different
+  event-streaming addition above (ADR 0006) is a deliberately different
   pattern -- broadcast facts to zero-or-more independent subscribers, not
   a job queue -- and doesn't change this.
 - No API gateway / BFF layer. One API, one set of clients (documented as

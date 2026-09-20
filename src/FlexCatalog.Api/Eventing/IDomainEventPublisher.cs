@@ -1,7 +1,7 @@
 namespace FlexCatalog.Api.Eventing;
 
 /// <summary>
-/// Fire-and-forget publication of a domain event (ADR 0005).
+/// Fire-and-forget publication of a domain event (ADR 0006).
 /// <see cref="Publish{TPayload}"/> is synchronous and non-blocking by
 /// design -- it only ever touches an in-memory queue, never the network --
 /// so it is always safe to call after a write has already succeeded,

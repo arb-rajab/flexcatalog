@@ -1,4 +1,4 @@
-# ADR 0005: Inventory Domain Events via NATS Core Pub/Sub
+# ADR 0006: Inventory Domain Events via NATS Core Pub/Sub
 
 - Status: Accepted
 - Date: 2026-09-19

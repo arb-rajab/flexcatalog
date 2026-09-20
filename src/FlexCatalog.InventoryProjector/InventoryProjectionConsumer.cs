@@ -8,7 +8,7 @@ namespace FlexCatalog.InventoryProjector;
 
 /// <summary>
 /// The independent consumer proving the event-streaming pattern end to end
-/// (ADR 0005): subscribes to every event under the shared subject prefix,
+/// (ADR 0006): subscribes to every event under the shared subject prefix,
 /// and maintains its own MongoDB read-model (<see cref="ProductProjection"/>)
 /// built entirely from the event stream -- it never queries
 /// FlexCatalog.Api's `products` collection. Reacts observably differently

@@ -13,7 +13,7 @@ using NATS.Client.Core;
 namespace FlexCatalog.IntegrationTests.Eventing;
 
 /// <summary>
-/// The load-bearing test for ADR 0005: proves a domain event travels the
+/// The load-bearing test for ADR 0006: proves a domain event travels the
 /// full real path -- HTTP write against the real API and MongoDB, over a
 /// real NATS broker, into a real, independently-running consumer instance
 /// (FlexCatalog.InventoryProjector's own <see cref="InventoryProjectionConsumer"/>,

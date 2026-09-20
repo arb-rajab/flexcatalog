@@ -32,7 +32,7 @@ Scalar UI.
 | `Jwt:Secret` | `Jwt__Secret` | HS256 signing secret; **required**, app fails to start if empty |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | JWT validation |
 | `Jwt:ExpiryMinutes` | `Jwt__ExpiryMinutes` | Token lifetime |
-| `Nats:Url` | `Nats__Url` | NATS server URL (both `FlexCatalog.Api` and `FlexCatalog.InventoryProjector`, ADR 0005). Unreachable is non-fatal for the API -- see "What's deliberately not here" in `architecture.md`. |
+| `Nats:Url` | `Nats__Url` | NATS server URL (both `FlexCatalog.Api` and `FlexCatalog.InventoryProjector`, ADR 0006). Unreachable is non-fatal for the API -- see "What's deliberately not here" in `architecture.md`. |
 | `Nats:SubjectPrefix` | `Nats__SubjectPrefix` | Subject prefix events are published/subscribed under; defaults to `flexcatalog.events` and normally left alone. |
 
 ## Health
@@ -44,13 +44,13 @@ as a container orchestrator liveness/readiness probe.
 ## Deployment shape this was built for
 
 A stateless API container, a MongoDB instance (managed Atlas cluster, or
-self-hosted replica set), and, since ADR 0005, a NATS server plus the
+self-hosted replica set), and, since ADR 0006, a NATS server plus the
 `FlexCatalog.InventoryProjector` worker as a fourth, independently
 deployable/scalable process -- see the Dockerfile, `Dockerfile.projector`,
 and docker-compose.yml. The API and the projector both hold no local
 state; horizontal scaling is "run more copies of the container," with
 MongoDB as the sole shared state. The projector is not on the API's
-request path (ADR 0005) -- it can be down, slow, or scaled independently
+request path (ADR 0006) -- it can be down, slow, or scaled independently
 without affecting `POST /api/products` or any other endpoint's
 availability or latency. TLS termination happens upstream of the
 container (`architecture.md` / `security.md`).
@@ -101,7 +101,7 @@ assumed to have been verified when it wasn't:
   limitation, not a code defect. It **was and is being verified for real
   by GitHub Actions CI**, which has unrestricted internet access.
 
-### Addendum (2026-09-19, ADR 0005 event-streaming work)
+### Addendum (2026-09-19, ADR 0006 event-streaming work)
 
 The sandbox used for this addition had the same Docker Hub restriction
 (confirmed again: `docker pull mongo:7.0` and `docker pull nats:2.10-alpine`

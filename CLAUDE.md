@@ -34,6 +34,13 @@ that `COPY`s more than one `.csproj` before restoring) are effectively
 Docker-build-unverifiable in this class of sandbox. Trust CI's
 `docker-build` job here too.
 
+And `docker info` reporting no daemon doesn't necessarily mean Docker is
+unusable there -- `service docker start` can fail on an unrelated `ulimit`
+permission error from the init script while `dockerd &` (run directly)
+still starts a working daemon; check that before concluding you're fully
+blocked, then check the CDN block above once the daemon itself is
+confirmed up.
+
 ## Don't re-litigate these three fixed bugs
 
 If you're touching `Program.cs`'s auth/DI wiring, these three were root-
@@ -93,13 +100,17 @@ detail) -- don't rediscover them from scratch:
 
 ## Where to extend, without needing a live database
 
-`ProductSearchService.BuildMatchDocument` and `.BuildFacetStage` are
-`internal` (via `InternalsVisibleTo`) specifically so the aggregation
-pipeline's *shape* is unit-testable as pure `BsonDocument` construction.
-If you add a new search filter or facet, extend
-`ProductSearchServiceQueryBuildingTests` first -- you don't need
-MongoDB running to verify the pipeline is built correctly, only to verify
-it executes correctly (that part is the integration suite's job).
+`ProductSearchService.BuildStructuredMatchDocument`, `.BuildTextMatchDocument`,
+and `.BuildFacetStage` are `internal` (via `InternalsVisibleTo`)
+specifically so the aggregation pipeline's *shape* is unit-testable as
+pure `BsonDocument` construction. If you add a new search filter or
+facet, extend `ProductSearchServiceQueryBuildingTests` first -- you don't
+need MongoDB running to verify the pipeline is built correctly, only to
+verify it executes correctly (that part is the integration suite's job).
+Note `$text` can never move into `BuildStructuredMatchDocument` or a
+`$facet` branch -- MongoDB doesn't allow `$text` inside a `$facet`
+sub-pipeline (see ADR 0004's "Resolved" section for why that mattered
+once faceting went independent-branch).
 
 ## Don't re-read these every session
 
