@@ -19,6 +19,21 @@ for a policy denial on the Docker Hub CDN host first. The integration
 suite is verified by CI (GitHub Actions has unrestricted internet), not
 by local runs, in that situation -- see `docs/project-memory/testing.md`.
 
+**Also don't burn time on `docker build` itself if it needs to restore
+NuGet packages.** Pulling `mcr.microsoft.com/dotnet/sdk:*` succeeds (that's
+a host-side `docker pull`), but any `RUN dotnet restore`/`dotnet publish`
+step executes *inside* the container's own network namespace, which this
+sandbox's egress proxy does not extend into -- setting `HTTPS_PROXY`
+inside the `Dockerfile` and even building with `--network host` still
+gets "connection refused" reaching the proxy's loopback address, because
+this sandbox's Docker daemon doesn't share the outer host's network stack
+the way `--network host` normally implies. There is no local workaround
+for this one (unlike the Docker Hub case above, which is a real, checkable
+policy denial) -- multi-project solutions especially (any `Dockerfile`
+that `COPY`s more than one `.csproj` before restoring) are effectively
+Docker-build-unverifiable in this class of sandbox. Trust CI's
+`docker-build` job here too.
+
 ## Don't re-litigate these three fixed bugs
 
 If you're touching `Program.cs`'s auth/DI wiring, these three were root-
@@ -47,6 +62,13 @@ detail) -- don't rediscover them from scratch:
 
 ## Fast local verification loop
 
+- If `dotnet` isn't on `PATH` at all (a fresh sandbox with no SDK
+  pre-installed), don't reach for the `dotnet-install.sh` script --
+  `builds.dotnet.microsoft.com` (where it downloads the actual SDK archive
+  from) is commonly policy-denied, same class of block as the Docker Hub
+  CDN above. `apt-get install -y dotnet-sdk-10.0` works instead (Ubuntu's
+  own archive mirrors the SDK and isn't blocked) and gets you the same
+  version CI uses.
 - `dotnet build FlexCatalog.slnx --configuration Release` -- whole
   solution builds in ~3-5s. Do this before every push; it's cheap.
 - `dotnet format FlexCatalog.slnx --verify-no-changes --severity warn` --

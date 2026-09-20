@@ -2,19 +2,19 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY src/FlexCatalog.Api/FlexCatalog.Api.csproj src/FlexCatalog.Api/
+COPY src/FlexCatalog.InventoryProjector/FlexCatalog.InventoryProjector.csproj src/FlexCatalog.InventoryProjector/
 COPY src/FlexCatalog.Contracts/FlexCatalog.Contracts.csproj src/FlexCatalog.Contracts/
-RUN dotnet restore src/FlexCatalog.Api/FlexCatalog.Api.csproj
+RUN dotnet restore src/FlexCatalog.InventoryProjector/FlexCatalog.InventoryProjector.csproj
 
-COPY src/FlexCatalog.Api/ src/FlexCatalog.Api/
+COPY src/FlexCatalog.InventoryProjector/ src/FlexCatalog.InventoryProjector/
 COPY src/FlexCatalog.Contracts/ src/FlexCatalog.Contracts/
-RUN dotnet publish src/FlexCatalog.Api/FlexCatalog.Api.csproj \
+RUN dotnet publish src/FlexCatalog.InventoryProjector/FlexCatalog.InventoryProjector.csproj \
     -c Release \
     -o /app/publish \
     --no-restore
 
 # ---- runtime stage ----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS runtime
 WORKDIR /app
 
 RUN groupadd --gid 10001 flexcatalog \
@@ -24,7 +24,4 @@ COPY --from=build /app/publish .
 
 USER flexcatalog
 
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
-
-ENTRYPOINT ["dotnet", "FlexCatalog.Api.dll"]
+ENTRYPOINT ["dotnet", "FlexCatalog.InventoryProjector.dll"]

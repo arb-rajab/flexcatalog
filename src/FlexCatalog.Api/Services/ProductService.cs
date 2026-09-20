@@ -1,6 +1,8 @@
 using FlexCatalog.Api.Domain;
 using FlexCatalog.Api.Dtos;
+using FlexCatalog.Api.Eventing;
 using FlexCatalog.Api.Repositories;
+using FlexCatalog.Contracts.Eventing;
 
 namespace FlexCatalog.Api.Services;
 
@@ -17,7 +19,7 @@ public interface IProductService
     Task<ProductResponse> AdjustInventoryAsync(string id, int delta, CancellationToken ct = default);
 }
 
-public sealed class ProductService(IProductRepository repository) : IProductService
+public sealed class ProductService(IProductRepository repository, IDomainEventPublisher events) : IProductService
 {
     public async Task<ProductResponse> GetByIdAsync(string id, CancellationToken ct = default)
     {
@@ -52,6 +54,14 @@ public sealed class ProductService(IProductRepository repository) : IProductServ
         };
 
         await repository.InsertAsync(product, ct);
+
+        // Fire-and-forget (ADR 0005): published after the write already
+        // succeeded, using the tenantId InsertAsync just stamped onto
+        // `product` from the validated JWT -- never a client-supplied value.
+        events.Publish(EventTypes.ProductCreated, product.TenantId, new ProductCreatedPayload(
+            product.Id, product.Sku, product.Name, product.CategoryType.ToString(),
+            product.Price, product.Currency, product.QuantityOnHand, product.InStock));
+
         return ProductResponse.FromDomain(product);
     }
 
@@ -108,11 +118,19 @@ public sealed class ProductService(IProductRepository repository) : IProductServ
                 $"Cannot adjust quantity by {delta}: current quantity is {existing.QuantityOnHand}.");
         }
 
+        var previousQuantity = existing.QuantityOnHand;
         existing.QuantityOnHand = newQuantity;
         existing.InStock = newQuantity > 0;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await repository.ReplaceAsync(existing, ct);
+
+        // Fire-and-forget (ADR 0005): published after the write already
+        // succeeded, using the tenantId ReplaceAsync just stamped onto
+        // `existing` from the validated JWT -- never a client-supplied value.
+        events.Publish(EventTypes.InventoryAdjusted, existing.TenantId, new InventoryAdjustedPayload(
+            existing.Id, existing.Sku, delta, previousQuantity, newQuantity, existing.InStock));
+
         return ProductResponse.FromDomain(existing);
     }
 }
