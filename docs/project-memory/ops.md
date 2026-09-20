@@ -3,14 +3,17 @@
 ## Running locally
 
 ```bash
-# Option A: docker compose (API + MongoDB)
+# Option A: docker compose (API + MongoDB + NATS + the inventory projector)
 export FLEXCATALOG_JWT_SECRET=$(openssl rand -base64 48)
 docker compose up --build
 # API: http://localhost:8080  (Scalar docs at /scalar in Development)
 # MongoDB: localhost:27017
+# NATS: localhost:4222 (monitoring endpoint on :8222 inside the container)
 
-# Option B: dotnet directly, against a MongoDB you run yourself
+# Option B: dotnet directly, against a MongoDB (and, for the event-streaming
+# path, a NATS server) you run yourself
 dotnet run --project src/FlexCatalog.Api
+dotnet run --project src/FlexCatalog.InventoryProjector
 ```
 
 `ASPNETCORE_ENVIRONMENT=Development` (the docker-compose default) makes
@@ -29,6 +32,8 @@ Scalar UI.
 | `Jwt:Secret` | `Jwt__Secret` | HS256 signing secret; **required**, app fails to start if empty |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | JWT validation |
 | `Jwt:ExpiryMinutes` | `Jwt__ExpiryMinutes` | Token lifetime |
+| `Nats:Url` | `Nats__Url` | NATS server URL (both `FlexCatalog.Api` and `FlexCatalog.InventoryProjector`, ADR 0006). Unreachable is non-fatal for the API -- see "What's deliberately not here" in `architecture.md`. |
+| `Nats:SubjectPrefix` | `Nats__SubjectPrefix` | Subject prefix events are published/subscribed under; defaults to `flexcatalog.events` and normally left alone. |
 
 ## Health
 
@@ -38,12 +43,17 @@ as a container orchestrator liveness/readiness probe.
 
 ## Deployment shape this was built for
 
-A single stateless API container plus a MongoDB instance (managed Atlas
-cluster, or self-hosted replica set) -- see the Dockerfile and
-docker-compose.yml. The API holds no local state; horizontal scaling is
-"run more copies of the container," with MongoDB as the sole shared
-state. TLS termination happens upstream of the container (`architecture.md`
-/ `security.md`).
+A stateless API container, a MongoDB instance (managed Atlas cluster, or
+self-hosted replica set), and, since ADR 0006, a NATS server plus the
+`FlexCatalog.InventoryProjector` worker as a fourth, independently
+deployable/scalable process -- see the Dockerfile, `Dockerfile.projector`,
+and docker-compose.yml. The API and the projector both hold no local
+state; horizontal scaling is "run more copies of the container," with
+MongoDB as the sole shared state. The projector is not on the API's
+request path (ADR 0006) -- it can be down, slow, or scaled independently
+without affecting `POST /api/products` or any other endpoint's
+availability or latency. TLS termination happens upstream of the
+container (`architecture.md` / `security.md`).
 
 ## Indexes at startup
 
@@ -90,3 +100,22 @@ assumed to have been verified when it wasn't:
   `testing.md` for the exact failure mode and why it's an environment
   limitation, not a code defect. It **was and is being verified for real
   by GitHub Actions CI**, which has unrestricted internet access.
+
+### Addendum (2026-09-19, ADR 0006 event-streaming work)
+
+The sandbox used for this addition had the same Docker Hub restriction
+(confirmed again: `docker pull mongo:7.0` and `docker pull nats:2.10-alpine`
+both fail identically), plus two more restrictions the note above didn't
+need to cover: no `.NET SDK` was pre-installed (worked around via
+`apt-get install dotnet-sdk-10.0`, since Ubuntu's own package archive isn't
+behind the same policy as Docker Hub or the official dotnet-install CDN),
+and this time the CA-trust workaround that verified `docker build .` in the
+original session **did not work** -- the container could not reach the
+sandbox's egress-proxy loopback address even with `--network host` (this
+sandbox's Docker daemon doesn't share the outer host's network namespace
+the way that flag normally implies). So for this addition specifically,
+neither `docker build` (API or `Dockerfile.projector`, since both now
+`dotnet restore` inside the container) nor the integration suite could be
+run locally -- both are, as before, verified by CI. `dotnet build`/`dotnet
+format`/the unit test suite all ran and passed locally, same as always.
+See `CLAUDE.md` for the generalized version of this finding.

@@ -2,6 +2,7 @@ using System.Text;
 using System.Threading.RateLimiting;
 using FlexCatalog.Api.Auth;
 using FlexCatalog.Api.Endpoints;
+using FlexCatalog.Api.Eventing;
 using FlexCatalog.Api.Infrastructure;
 using FlexCatalog.Api.Repositories;
 using FlexCatalog.Api.Services;
@@ -17,6 +18,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<MongoOptions>(builder.Configuration.GetSection(MongoOptions.SectionName));
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<NatsOptions>(builder.Configuration.GetSection(NatsOptions.SectionName));
 
 builder.Services.AddSingleton<IMongoClient>(sp =>
 {
@@ -45,6 +47,16 @@ builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
+
+// Domain-event publishing (ADR 0006): the channel and the background
+// publisher are both Singletons with no Scoped dependencies, so
+// DomainEventPublishingService (a Singleton IHostedService) never hits the
+// hosted-service-depends-on-Scoped-service trap documented in CLAUDE.md.
+// IDomainEventPublisher is Singleton too -- Publish() only touches the
+// channel, so it's safe to inject into the Scoped ProductService.
+builder.Services.AddSingleton<DomainEventChannel>();
+builder.Services.AddSingleton<IDomainEventPublisher, ChannelDomainEventPublisher>();
+builder.Services.AddHostedService<DomainEventPublishingService>();
 
 // Fail fast at startup if misconfigured. The actual value used for
 // signature validation is re-read from configuration *inside* the

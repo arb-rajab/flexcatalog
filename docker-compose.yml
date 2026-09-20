@@ -12,6 +12,18 @@ services:
       timeout: 5s
       retries: 5
 
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: ["-m", "8222"]
+
   api:
     build:
       context: .
@@ -23,12 +35,30 @@ services:
       ASPNETCORE_ENVIRONMENT: "Development"
       Mongo__ConnectionString: "mongodb://mongo:27017"
       Mongo__DatabaseName: "flexcatalog"
+      Nats__Url: "nats://nats:4222"
       Jwt__Secret: "${FLEXCATALOG_JWT_SECRET:?Set FLEXCATALOG_JWT_SECRET before starting, e.g. export FLEXCATALOG_JWT_SECRET=$(openssl rand -base64 48)}"
       Jwt__Issuer: "flexcatalog"
       Jwt__Audience: "flexcatalog-clients"
       Jwt__ExpiryMinutes: "60"
     depends_on:
       mongo:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  inventory-projector:
+    build:
+      context: .
+      dockerfile: Dockerfile.projector
+    restart: unless-stopped
+    environment:
+      Mongo__ConnectionString: "mongodb://mongo:27017"
+      Mongo__DatabaseName: "flexcatalog"
+      Nats__Url: "nats://nats:4222"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      nats:
         condition: service_healthy
 
 volumes:

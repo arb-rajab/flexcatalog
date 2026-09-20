@@ -13,8 +13,11 @@
   (`/scalar`, Development only) -- not Swashbuckle; see
   "Why not Swashbuckle" below.
 - **Tests**: xUnit. Unit tests run with no external dependencies.
-  Integration tests use Testcontainers to run against a real, ephemeral
-  MongoDB container.
+  Integration tests use Testcontainers to run against real, ephemeral
+  MongoDB and NATS containers.
+- **Event streaming**: NATS (core pub/sub), `NATS.Client.Core` -- one
+  additive, fire-and-forget side channel off the REST/MongoDB core; see
+  "Event streaming (ADR 0006)" below.
 
 ## Layering
 
@@ -45,6 +48,12 @@ Dtos/                 Request/response records for the HTTP boundary.
 Dependencies point one direction: Endpoints -> Services -> Repositories ->
 Infrastructure. Nothing in `Domain` or `Repositories` depends on
 `Endpoints` or ASP.NET Core request types.
+
+Two more projects sit alongside `FlexCatalog.Api`, added by ADR 0006:
+`FlexCatalog.Contracts` (event envelope/payload records shared by
+publisher and consumer, no logic) and `FlexCatalog.InventoryProjector` (the
+independent consumer -- its own `Program.cs`, its own MongoDB connection,
+no reference to `FlexCatalog.Api` in either direction).
 
 ## Request flow: a search request
 
@@ -101,13 +110,47 @@ connection string or secret is hardcoded outside
 `appsettings.Development.json`, which carries only a local-dev-only
 placeholder (see `security.md`).
 
+## Event streaming (ADR 0006)
+
+Additive to everything above, not a replacement for any of it: the
+REST/MongoDB core in the request-flow diagram above is unchanged and does
+not depend on any of this working.
+
+```
+ProductService.CreateAsync / .AdjustInventoryAsync
+  -> repository write already succeeded (Mongo)
+  -> IDomainEventPublisher.Publish(...)      [in-memory, non-blocking,
+                                               cannot fail the request]
+       -> DomainEventChannel (bounded, drop-oldest)
+            -> DomainEventPublishingService (Singleton BackgroundService,
+               its own NatsConnection, catches/logs every publish failure)
+                 -> NATS subject "flexcatalog.events.<event-type>"
+                      -> FlexCatalog.InventoryProjector (separate process)
+                           -> InventoryProjectionConsumer
+                                -> its own MongoDB collection
+                                   ("productInventoryProjection")
+```
+
+`FlexCatalog.Contracts` is a small shared class library (envelope +
+per-event payload records + event-type constants) referenced by both
+`FlexCatalog.Api` (the only publisher) and `FlexCatalog.InventoryProjector`
+(the only consumer today) -- the two processes agree on wire schema without
+either depending on the other's code. See ADR 0006 for the full broker
+choice reasoning, the fire-and-forget design, and its consequences
+(at-most-once delivery, no replay, the projection is a convenience
+read-model that nothing else depends on).
+
 ## What's deliberately not here
 
 - No caching layer (Redis, in-memory). Catalog reads go straight to
   MongoDB; at this scale, and with the indexes in ADR 0002, that's fast
   enough, and adding a cache invalidation story would be complexity this
   demo doesn't need to justify.
-- No message queue / event bus. Inventory adjustment is a synchronous
-  read-modify-write; there's no fan-out to other systems to decouple.
+- No task queue (RabbitMQ/Redis-queue style point-to-point work
+  distribution) -- inventory adjustment is a synchronous read-modify-write
+  with no unit of work to hand off to exactly one worker. The
+  event-streaming addition above (ADR 0006) is a deliberately different
+  pattern -- broadcast facts to zero-or-more independent subscribers, not
+  a job queue -- and doesn't change this.
 - No API gateway / BFF layer. One API, one set of clients (documented as
   a single deployable unit in `ops.md`).

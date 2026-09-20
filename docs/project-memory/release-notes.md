@@ -1,5 +1,46 @@
 # Release Notes
 
+## v0.2.0 -- Inventory event streaming (2026-09-19)
+
+Adds a real, if intentionally small, event-streaming/pub-sub sample
+alongside the existing REST/MongoDB core -- additive, not a rearchitecture
+(ADR 0006).
+
+### Added
+- `ProductCreated` and `InventoryAdjusted` domain events, published
+  fire-and-forget from `ProductService.CreateAsync` /
+  `.AdjustInventoryAsync` immediately after their MongoDB write already
+  succeeds -- a NATS outage or a missing consumer cannot fail or slow the
+  primary request path.
+- NATS (core pub/sub, not JetStream) as the broker, chosen over Kafka
+  (disproportionate operational weight for this scope) and over
+  RabbitMQ/Redis (already used elsewhere in this portfolio for the
+  distinct task-queue pattern) -- see ADR 0006 for the full reasoning.
+- `FlexCatalog.Contracts`: a small shared class library defining the wire
+  envelope and per-event payloads, referenced by both the publisher and
+  the consumer so the two independent processes agree on schema without
+  depending on each other's code.
+- `FlexCatalog.InventoryProjector`: a new, independently deployable worker
+  service that subscribes to the event stream and maintains its own
+  MongoDB read-model (`productInventoryProjection`), proving the
+  message-driven pattern works end to end. Reacts observably differently
+  from the API itself -- logs a distinct out-of-stock warning when an
+  `InventoryAdjusted` event drops quantity to zero.
+- `nats` and `inventory-projector` services added to `docker-compose.yml`;
+  a new `Dockerfile.projector` for the consumer.
+- `InventoryEventStreamingTests`: a real end-to-end integration test
+  (Testcontainers-backed NATS + MongoDB, the real API over real HTTP, the
+  real `InventoryProjectionConsumer`) proving an event published by the
+  API is actually consumed and projected -- nothing in this test is
+  mocked.
+
+### Known limitations at this release
+- At-most-once delivery, no replay: an event published while the
+  projector is down is lost, by design (see ADR 0006's "Consequences").
+- The projection is a convenience read-model; nothing in the existing REST
+  API reads from it, and MongoDB's `products` collection remains the
+  single source of truth.
+
 ## v0.1.0 -- Initial release (2026-09-16)
 
 First working version of FlexCatalog: a multi-tenant product catalog and

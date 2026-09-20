@@ -88,3 +88,23 @@ rather than done now.
     number on how the wildcard attribute index (ADR 0002) behaves at
     scale rather than asserting it qualitatively.
 14. Contract tests against the generated OpenAPI document.
+
+## Event streaming (ADR 0006)
+15. **Move the `flexcatalog.events.*` subjects onto NATS JetStream**, if a
+    consumer ever needs at-least-once delivery or replay-from-a-point
+    instead of today's best-effort core-NATS pub/sub. Deferred at
+    introduction specifically because JetStream's ack/retry semantics are
+    stronger than requirement #4 asked for on the primary write path --
+    same client library and subjects, an additive change, not a rewrite.
+16. **A second, genuinely different consumer** (e.g. a tenant-level
+    activity feed, or a webhook-fanout service) to demonstrate that the
+    same event stream supports multiple independent subscribers, not just
+    one -- not needed to prove the core pub/sub pattern, which one
+    consumer already does.
+17. **Outbox pattern instead of an in-memory channel** between the
+    repository write and the NATS publish, if this ever needs to survive
+    an API process crash between the two. Deferred because the in-memory
+    channel is consistent with the deliberately best-effort, at-most-once
+    delivery guarantee this iteration chose (ADR 0006) -- an outbox would
+    upgrade that guarantee, which isn't free (it requires the event and
+    the domain write to commit in the same MongoDB transaction).
