@@ -112,6 +112,16 @@ Note `$text` can never move into `BuildStructuredMatchDocument` or a
 sub-pipeline (see ADR 0004's "Resolved" section for why that mattered
 once faceting went independent-branch).
 
+Same pattern applies to the two projects added in ADR 0007: `SearchIndexingConsumer`'s
+envelope-to-`ProductSearchDocument` mapping methods
+(`BuildDocumentFromCreated`/`BuildDocumentFromUpdated`/
+`BuildStockUpdateFromInventoryAdjusted`/`BuildDeletionFromEnvelope`) and
+`MeilisearchProductSearchService.BuildFilter` are all `internal` +
+`InternalsVisibleTo`, testable with plain constructed `DomainEventEnvelope`/
+`MeilisearchSearchRequest` values -- no live Meilisearch needed. Only
+`SearchIndexingEventStreamingTests` (real Meilisearch container) needs to
+verify the mapped documents actually land and are searchable.
+
 ## Don't re-read these every session
 
 - `docs/project-memory/decisions/000{1-4}-*.md` are the architecture

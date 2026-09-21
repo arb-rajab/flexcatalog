@@ -1,4 +1,5 @@
 using FlexCatalog.Api.Dtos;
+using FlexCatalog.Api.Search;
 using FlexCatalog.Api.Services;
 
 namespace FlexCatalog.Api.Endpoints;
@@ -46,5 +47,14 @@ public static class ProductEndpoints
                 Results.Ok(await searchService.SearchAsync(request, ct)))
             .WithName("SearchProducts")
             .WithSummary("Faceted search: category, price range, in-stock, free text, and category-specific attribute filters.");
+
+        // Additive alongside the $facet endpoint above, not a replacement
+        // (ADR 0007) -- backed by Meilisearch instead of MongoDB, for
+        // typo-tolerant, relevance-ranked free text. Prefer /search when the
+        // UI needs facet counts for filter chips.
+        group.MapPost("/search/meilisearch", async (MeilisearchSearchRequest request, IMeilisearchProductSearchService searchService, CancellationToken ct) =>
+                Results.Ok(await searchService.SearchAsync(request, ct)))
+            .WithName("SearchProductsMeilisearch")
+            .WithSummary("Full-text, typo-tolerant search via Meilisearch -- additive alongside /search's faceted navigation (ADR 0007).");
     }
 }

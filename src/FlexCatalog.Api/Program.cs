@@ -5,7 +5,9 @@ using FlexCatalog.Api.Endpoints;
 using FlexCatalog.Api.Eventing;
 using FlexCatalog.Api.Infrastructure;
 using FlexCatalog.Api.Repositories;
+using FlexCatalog.Api.Search;
 using FlexCatalog.Api.Services;
+using Meilisearch;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
@@ -19,6 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<MongoOptions>(builder.Configuration.GetSection(MongoOptions.SectionName));
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<NatsOptions>(builder.Configuration.GetSection(NatsOptions.SectionName));
+builder.Services.Configure<MeilisearchOptions>(builder.Configuration.GetSection(MeilisearchOptions.SectionName));
 
 builder.Services.AddSingleton<IMongoClient>(sp =>
 {
@@ -44,6 +47,20 @@ builder.Services.AddSingleton<ITenantRepository, TenantRepository>();
 
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
+
+// Read-only Meilisearch client (ADR 0007): FlexCatalog.SearchIndexer is the
+// sole writer to this index, the same way FlexCatalog.Api is the sole
+// writer to MongoDB's `products` collection and InventoryProjector only
+// ever reads via events. MeilisearchProductSearchService is Scoped because
+// it depends on the per-request ITenantContext (see its own doc comment for
+// why tenant scoping happens there, not per caller).
+builder.Services.AddSingleton(sp =>
+{
+    var meiliOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MeilisearchOptions>>().Value;
+    return new MeilisearchClient(meiliOptions.Url, meiliOptions.ApiKey);
+});
+builder.Services.AddScoped<IMeilisearchProductSearchService, MeilisearchProductSearchService>();
+
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
 builder.Services.AddSingleton<IJwtTokenService, JwtTokenService>();
