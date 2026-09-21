@@ -14,10 +14,14 @@
   "Why not Swashbuckle" below.
 - **Tests**: xUnit. Unit tests run with no external dependencies.
   Integration tests use Testcontainers to run against real, ephemeral
-  MongoDB and NATS containers.
+  MongoDB, NATS, and Meilisearch containers.
 - **Event streaming**: NATS (core pub/sub), `NATS.Client.Core` -- one
   additive, fire-and-forget side channel off the REST/MongoDB core; see
   "Event streaming (ADR 0006)" below.
+- **Search engine**: Meilisearch, official `Meilisearch` .NET client --
+  additive full-text/typo-tolerant search alongside MongoDB's own $facet
+  search, fed by the same NATS event stream; see "Search indexing
+  (ADR 0007)" below.
 
 ## Layering
 
@@ -49,11 +53,14 @@ Dependencies point one direction: Endpoints -> Services -> Repositories ->
 Infrastructure. Nothing in `Domain` or `Repositories` depends on
 `Endpoints` or ASP.NET Core request types.
 
-Two more projects sit alongside `FlexCatalog.Api`, added by ADR 0006:
-`FlexCatalog.Contracts` (event envelope/payload records shared by
-publisher and consumer, no logic) and `FlexCatalog.InventoryProjector` (the
-independent consumer -- its own `Program.cs`, its own MongoDB connection,
-no reference to `FlexCatalog.Api` in either direction).
+Three more projects sit alongside `FlexCatalog.Api`: `FlexCatalog.Contracts`
+(added by ADR 0006 -- event envelope/payload records and the Meilisearch
+document shape, shared by every publisher/consumer, no logic) and two
+independent consumers of the same event stream, `FlexCatalog.InventoryProjector`
+(ADR 0006) and `FlexCatalog.SearchIndexer` (ADR 0007) -- each with its own
+`Program.cs` and its own downstream connection (MongoDB, Meilisearch
+respectively), no reference to `FlexCatalog.Api` or to each other in any
+direction.
 
 ## Request flow: a search request
 
@@ -132,13 +139,47 @@ ProductService.CreateAsync / .AdjustInventoryAsync
 ```
 
 `FlexCatalog.Contracts` is a small shared class library (envelope +
-per-event payload records + event-type constants) referenced by both
-`FlexCatalog.Api` (the only publisher) and `FlexCatalog.InventoryProjector`
-(the only consumer today) -- the two processes agree on wire schema without
-either depending on the other's code. See ADR 0006 for the full broker
-choice reasoning, the fire-and-forget design, and its consequences
-(at-most-once delivery, no replay, the projection is a convenience
-read-model that nothing else depends on).
+per-event payload records + event-type constants) referenced by
+`FlexCatalog.Api` (the only publisher) and every independent consumer
+(`FlexCatalog.InventoryProjector`, `FlexCatalog.SearchIndexer`) -- all
+sides agree on wire schema without depending on each other's code. See
+ADR 0006 for the full broker choice reasoning, the fire-and-forget design,
+and its consequences (at-most-once delivery, no replay, a consumer's own
+downstream store is a convenience view that nothing else depends on).
+
+## Search indexing (ADR 0007)
+
+A second, independent consumer of the same event stream, added
+specifically to demonstrate a dedicated search engine (Meilisearch)
+alongside MongoDB's own $facet-based search (ADR 0004) -- additive, not a
+replacement for either the event stream or the existing search endpoint.
+
+```
+ProductService.CreateAsync / .UpdateAsync / .DeleteAsync / .AdjustInventoryAsync
+  -> repository write already succeeded (Mongo)
+  -> IDomainEventPublisher.Publish(...)   [same channel as ADR 0006]
+       -> NATS subject "flexcatalog.events.<event-type>"
+            -> FlexCatalog.SearchIndexer (separate process, sibling of
+               InventoryProjector -- same retry/backoff discipline)
+                 -> SearchIndexingConsumer
+                      -> Meilisearch index "products"
+                           (add/update/delete a ProductSearchDocument)
+
+GET-side (independent of the write path above):
+POST /api/products/search/meilisearch
+  -> ProductEndpoints -> MeilisearchProductSearchService.SearchAsync
+       -> BuildFilter unconditionally ANDs tenantId (from ITenantContext,
+          mirroring ADR 0001's Mongo tenant-scoping discipline)
+       -> queries the same Meilisearch index SearchIndexingConsumer writes
+```
+
+`product.updated` and `product.deleted` are new events (ADR 0007) --
+`ProductService.UpdateAsync`/`DeleteAsync` existed before this but
+published nothing; without them the search index could never learn about
+edits or removals and would drift from MongoDB indefinitely, not just lag
+briefly. Added via the identical fire-and-forget hook pattern ADR 0006
+already established (publish immediately after the Mongo write succeeds),
+not a new mechanism.
 
 ## What's deliberately not here
 

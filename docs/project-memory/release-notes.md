@@ -1,5 +1,51 @@
 # Release Notes
 
+## v0.3.0 -- Meilisearch search indexer (2026-09-21)
+
+Adds a dedicated, typo-tolerant search engine (Meilisearch) fed by the
+same NATS event stream ADR 0006 introduced -- additive alongside the
+existing MongoDB `$facet` search, not a replacement (ADR 0007).
+
+### Added
+- `ProductUpdated` and `ProductDeleted` domain events -- `ProductService
+  .UpdateAsync`/`.DeleteAsync` existed already but published nothing;
+  added via the same fire-and-forget hook pattern `CreateAsync`/
+  `AdjustInventoryAsync` already used (ADR 0006), not a new mechanism.
+  `ProductCreatedPayload` enriched with `Description`/`Tags`/`Attributes`
+  so a consumer can build a full search document without a follow-up
+  read; `FlexCatalog.InventoryProjector` untouched and unaffected.
+- `FlexCatalog.SearchIndexer`: a new, independently deployable worker
+  service -- a sibling of `FlexCatalog.InventoryProjector`, same
+  subscribe-and-retry shape, indexing into Meilisearch instead of
+  MongoDB. Reacts to all four product events (create/update/delete/
+  inventory-adjust) to keep the index correct, not just fresh.
+- `POST /api/products/search/meilisearch`: a new, additive search
+  endpoint for typo-tolerant free text, alongside the existing `$facet`
+  endpoint (kept, unmodified) -- see ADR 0007 for when to use each.
+  Tenant isolation enforced structurally (`MeilisearchProductSearchService
+  .BuildFilter`), mirroring ADR 0001's approach for MongoDB.
+- `ProductSearchDocument`, in the shared `FlexCatalog.Contracts` project,
+  the Meilisearch document shape both the indexer (writer) and the API
+  (reader) agree on.
+- `meilisearch` and `search-indexer` services added to
+  `docker-compose.yml`; a new `Dockerfile.searchindexer` for the worker.
+- `SearchIndexingEventStreamingTests`: a real end-to-end integration test
+  (Testcontainers-backed Meilisearch + NATS + MongoDB, the real API over
+  real HTTP, the real `SearchIndexingConsumer`) proving a product's full
+  lifecycle -- create, update, inventory adjustment, delete -- is
+  correctly reflected in Meilisearch, including that the indexed document
+  is genuinely searchable (typo-tolerant), not just present.
+
+### Known limitations at this release
+- Eventually consistent and at-most-once, same accepted tradeoff as the
+  ADR 0006 projection: an event published while `SearchIndexer` is down
+  is lost, and the index can drift from MongoDB (which remains the
+  source of truth) until the next write to that product.
+- Read/write Meilisearch API key separation is documented but not fully
+  implemented -- `FlexCatalog.Api` and `FlexCatalog.SearchIndexer` share
+  one master key in this demo; see `Search/MeilisearchOptions.cs` and
+  ADR 0007.
+
 ## v0.2.0 -- Inventory event streaming (2026-09-19)
 
 Adds a real, if intentionally small, event-streaming/pub-sub sample

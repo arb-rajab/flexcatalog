@@ -3,7 +3,9 @@
 A multi-tenant product catalog and inventory API built on ASP.NET Core
 (.NET 10) and MongoDB. Portfolio skill-demo focused on .NET + NoSQL:
 genuinely different attribute shapes per product category, structural
-tenant isolation, and faceted search via a MongoDB aggregation pipeline.
+tenant isolation, faceted search via a MongoDB aggregation pipeline, and
+(fed by a real NATS domain-event stream) an independent MongoDB
+projection service plus a dedicated Meilisearch full-text search index.
 
 See [`docs/project-memory/brief.md`](docs/project-memory/brief.md) for
 what this is and why, and
@@ -15,6 +17,7 @@ auth, faceted search).
 
 ```bash
 export FLEXCATALOG_JWT_SECRET=$(openssl rand -base64 48)
+export FLEXCATALOG_MEILI_MASTER_KEY=$(openssl rand -base64 24)
 docker compose up --build
 ```
 
@@ -40,11 +43,14 @@ dotnet test tests/FlexCatalog.IntegrationTests/FlexCatalog.IntegrationTests.cspr
 ## Project layout
 
 ```
-src/FlexCatalog.Api/           The API (see architecture.md for layering)
-tests/FlexCatalog.UnitTests/   No external dependencies
-tests/FlexCatalog.IntegrationTests/  Testcontainers + real MongoDB
-docs/project-memory/           Brief, requirements, architecture, security,
-                                testing, ops, ADRs, risk, backlog, handoff
+src/FlexCatalog.Api/              The API (see architecture.md for layering)
+src/FlexCatalog.Contracts/        Shared event/search-document contracts
+src/FlexCatalog.InventoryProjector/  Independent NATS consumer -> MongoDB read-model
+src/FlexCatalog.SearchIndexer/    Independent NATS consumer -> Meilisearch index
+tests/FlexCatalog.UnitTests/      No external dependencies
+tests/FlexCatalog.IntegrationTests/  Testcontainers + real MongoDB/NATS/Meilisearch
+docs/project-memory/              Brief, requirements, architecture, security,
+                                   testing, ops, ADRs, risk, backlog, handoff
 ```
 
 ## Docs index

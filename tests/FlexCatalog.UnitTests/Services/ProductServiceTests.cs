@@ -68,6 +68,23 @@ public class ProductServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WithValidRequest_PublishesFlattenedBrandAttribute()
+    {
+        _repository.Setup(r => r.GetBySkuAsync("SKU-1", It.IsAny<CancellationToken>())).ReturnsAsync((Product?)null);
+
+        await _service.CreateAsync(ElectronicsRequest());
+
+        _events.Verify(
+            e => e.Publish<ProductCreatedPayload>(
+                EventTypes.ProductCreated,
+                It.IsAny<string>(),
+                It.Is<ProductCreatedPayload>(p =>
+                    p.Description == "desc" &&
+                    p.Attributes["brand"].SequenceEqual(new[] { "Acme" }))),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task CreateAsync_WithMismatchedAttributes_DoesNotPublishEvent()
     {
         var request = new UpsertProductRequest(
@@ -151,10 +168,87 @@ public class ProductServiceTests
     }
 
     [Fact]
+    public async Task DeleteAsync_WhenProductDoesNotExist_ThrowsNotFoundException()
+    {
+        _repository.Setup(r => r.GetByIdAsync("p1", It.IsAny<CancellationToken>())).ReturnsAsync((Product?)null);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => _service.DeleteAsync("p1"));
+
+        _repository.Verify(r => r.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(_events.Invocations);
+    }
+
+    [Fact]
     public async Task DeleteAsync_WhenRepositoryReportsNoMatch_ThrowsNotFoundException()
     {
+        _repository.Setup(r => r.GetByIdAsync("p1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Product { Id = "p1", Sku = "SKU-1" });
         _repository.Setup(r => r.DeleteAsync("p1", It.IsAny<CancellationToken>())).ReturnsAsync(false);
 
         await Assert.ThrowsAsync<NotFoundException>(() => _service.DeleteAsync("p1"));
+
+        Assert.Empty(_events.Invocations);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_WhenFound_PublishesProductDeletedEvent()
+    {
+        _repository.Setup(r => r.GetByIdAsync("p1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Product { Id = "p1", Sku = "SKU-1", TenantId = "tenant-a" });
+        _repository.Setup(r => r.DeleteAsync("p1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        await _service.DeleteAsync("p1");
+
+        _events.Verify(
+            e => e.Publish<ProductDeletedPayload>(
+                EventTypes.ProductDeleted,
+                "tenant-a",
+                It.Is<ProductDeletedPayload>(p => p.ProductId == "p1" && p.Sku == "SKU-1")),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithValidRequest_PublishesProductUpdatedEventWithFlattenedAttributes()
+    {
+        var existing = new Product
+        {
+            Id = "p1",
+            TenantId = "tenant-a",
+            Sku = "SKU-1",
+            CategoryType = CategoryType.Apparel,
+            Attributes = new ApparelAttributes(),
+        };
+        _repository.Setup(r => r.GetByIdAsync("p1", It.IsAny<CancellationToken>())).ReturnsAsync(existing);
+        _repository.Setup(r => r.GetBySkuAsync("SKU-1", It.IsAny<CancellationToken>())).ReturnsAsync((Product?)null);
+        _repository.Setup(r => r.ReplaceAsync(It.IsAny<Product>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var request = new UpsertProductRequest(
+            "SKU-1", "Jacket", "desc", CategoryType.Apparel, 49.99m, "USD", true, 3, ["outerwear"],
+            new ApparelAttributes { Sizes = ["M", "L"], Colors = ["Black"] });
+
+        await _service.UpdateAsync("p1", request);
+
+        _events.Verify(
+            e => e.Publish<ProductUpdatedPayload>(
+                EventTypes.ProductUpdated,
+                "tenant-a",
+                It.Is<ProductUpdatedPayload>(p =>
+                    p.ProductId == "p1" &&
+                    p.Name == "Jacket" &&
+                    p.Attributes["sizes"].SequenceEqual(new[] { "M", "L" }) &&
+                    p.Attributes["colors"].SequenceEqual(new[] { "Black" }))),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_WithMismatchedAttributes_DoesNotPublishEvent()
+    {
+        var request = new UpsertProductRequest(
+            "SKU-1", "Widget", null, CategoryType.Apparel, 9.99m, "USD", true, 5, null,
+            new ElectronicsAttributes { Brand = "Acme" });
+
+        await Assert.ThrowsAsync<ValidationException>(() => _service.UpdateAsync("p1", request));
+
+        Assert.Empty(_events.Invocations);
     }
 }

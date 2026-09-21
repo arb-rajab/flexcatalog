@@ -9,9 +9,11 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Meilisearch" Version="0.20.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="NATS.Client.Core" Version="3.2.0" />
+    <PackageReference Include="Testcontainers" Version="4.15.0" />
     <PackageReference Include="Testcontainers.MongoDb" Version="4.15.0" />
     <PackageReference Include="Testcontainers.Nats" Version="4.15.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
@@ -25,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FlexCatalog.Api\FlexCatalog.Api.csproj" />
     <ProjectReference Include="..\..\src\FlexCatalog.InventoryProjector\FlexCatalog.InventoryProjector.csproj" />
+    <ProjectReference Include="..\..\src\FlexCatalog.SearchIndexer\FlexCatalog.SearchIndexer.csproj" />
   </ItemGroup>
 
 </Project>

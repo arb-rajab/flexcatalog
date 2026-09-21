@@ -13,11 +13,14 @@ Two test projects, matching the two things worth testing differently:
   0006, one suite in here (`InventoryEventStreamingTests`) also spins up a
   real NATS container and a real, directly-instantiated
   `FlexCatalog.InventoryProjector.InventoryProjectionConsumer` to prove the
-  event-streaming path end to end -- see below.
+  event-streaming path end to end. Since ADR 0007, a second such suite
+  (`SearchIndexingEventStreamingTests`) additionally spins up a real
+  Meilisearch container and a real, directly-instantiated
+  `FlexCatalog.SearchIndexer.SearchIndexingConsumer` -- see below.
 
 ## What's covered
 
-Unit tests (55 tests at time of writing):
+Unit tests (69 tests at time of writing):
 - `JwtSecretGuardTests` -- the Production placeholder-secret startup
   guard (R2): throws only when both "is Production" and "is exactly the
   known placeholder" are true.
@@ -44,7 +47,24 @@ Unit tests (55 tests at time of writing):
   `AdjustInventoryAsync` publish the right domain event on success and
   publish nothing when validation rejects the request first, using Moq
   against `IDomainEventPublisher` -- no NATS needed for this part, only the
-  end-to-end integration test below touches a real broker.
+  end-to-end integration test below touches a real broker. Since ADR 0007,
+  also asserts `UpdateAsync`/`DeleteAsync` publish `ProductUpdated`/
+  `ProductDeleted` (previously they published nothing), and that the
+  polymorphic `ProductAttributes` bag is correctly flattened into the
+  event payload's `Attributes` dictionary for each category.
+- `SearchIndexingConsumerMappingTests` (ADR 0007) -- the pure envelope-to-
+  `ProductSearchDocument` mapping logic (`BuildDocumentFromCreated`,
+  `BuildDocumentFromUpdated`, `BuildStockUpdateFromInventoryAdjusted`,
+  `BuildDeletionFromEnvelope`), exposed `internal` + `InternalsVisibleTo`
+  the same way `ProductSearchService`'s pipeline-building methods are, so
+  this is testable without a live Meilisearch: category-specific attribute
+  flattening (brand/sizes+colors/author), the tenant-scoped document id
+  scheme, and the partial-update shape for inventory adjustments.
+- `MeilisearchProductSearchServiceTests` (ADR 0007) -- the pure Meilisearch
+  filter-building logic (`BuildFilter`): the tenant filter is always
+  present and always comes first, and category/price/stock filters
+  compose onto it correctly. This is where a tenant-isolation regression
+  in the Meilisearch-backed search path would actually show up.
 - `JwtTokenServiceTests` -- issued tokens carry the correct `tenant_id` /
   `role` / `sub` claims and expiry.
 - `PasswordHasherTests` -- hash/verify roundtrip, wrong password
@@ -83,6 +103,25 @@ Integration tests:
   broker, real consumer code, real second MongoDB collection. Uses a new
   `NatsContainerFixture` (mirrors `MongoContainerFixture`) and an
   `EventStreaming collection` combining both.
+- `SearchIndexingEventStreamingTests` (ADR 0007) -- **the load-bearing test
+  for the search-indexer addition**: exercises the full product lifecycle
+  (create, update, inventory adjust, delete) over real HTTP against the
+  real API, and asserts (by polling the real Meilisearch index directly,
+  since delivery is async and best-effort) that a real,
+  independently-instantiated `SearchIndexingConsumer` -- subscribed to the
+  same real NATS container the API published to -- lands all four events
+  (`ProductCreated`, `ProductUpdated`, `InventoryAdjusted`,
+  `ProductDeleted`) in Meilisearch with the correct final state,
+  including that a deleted product actually stops existing in the index.
+  Also proves the indexed document is genuinely *searchable* (a
+  typo-tolerant query against Meilisearch's own search endpoint, not just
+  a raw document-by-id lookup). Nothing in this test is mocked: real API,
+  real MongoDB, real NATS broker, real Meilisearch instance, real consumer
+  code. Uses a new `MeilisearchContainerFixture` (mirrors
+  `NatsContainerFixture`, but wraps the generic Testcontainers
+  `ContainerBuilder` directly since no official `Testcontainers.Meilisearch`
+  module exists) and a `SearchIndexing collection` combining Mongo, NATS,
+  and Meilisearch.
 
 All integration tests run against the demo tenants/users seeded by
 `DataSeeder` at startup (`admin@acme.test` / `viewer@acme.test` /
@@ -94,26 +133,31 @@ whatever products each test creates itself.
 **Sandboxes used to develop this repository cannot pull images from Docker
 Hub** -- the environment's egress proxy returns 403 for
 `production.cloudfront.docker.com` (Docker Hub's blob CDN), which blocks
-`mongo:7.0`, `nats:2.10-alpine`, and the `testcontainers/ryuk`
-resource-reaper image that Testcontainers needs for all of them.
-`mcr.microsoft.com` (used for the .NET base images) *is* reachable, so
-`dotnet build`/`dotnet format`/the unit test suite were all verified
-directly in each such sandbox; the integration test suite compiles cleanly
-(verified) but its tests (17 as of ADR 0006, up from 16) fail purely at the
-container-pull step (`DockerImageNotFoundException`), before any test body
-executes. This is an environment restriction, not a code defect --
-confirmed both times by checking the egress proxy's own status endpoint,
-which logs `production.cloudfront.docker.com` as a policy denial. See
-`ops.md`'s "Sandbox limitation" section (and its ADR-0006 addendum) for the
-exact restrictions hit each time, including ones beyond Docker Hub.
+`mongo:7.0`, `nats:2.10-alpine`, `getmeili/meilisearch` (ADR 0007), and the
+`testcontainers/ryuk` resource-reaper image that Testcontainers needs for
+all of them. `mcr.microsoft.com` (used for the .NET base images) *is*
+reachable, so `dotnet build`/`dotnet format`/the unit test suite were all
+verified directly in each such sandbox; the integration test suite
+compiles cleanly (verified) but its tests (18 as of ADR 0007, up from 17)
+fail purely at the container-pull step (`DockerImageNotFoundException`),
+before any test body executes. This is an environment restriction, not a
+code defect -- confirmed by checking the egress proxy's own status
+endpoint, which logs `production.cloudfront.docker.com` as a policy
+denial. See `ops.md`'s "Sandbox limitation" section (and its ADR-0006
+addendum) for the exact restrictions hit each time, including ones beyond
+Docker Hub.
 
 GitHub Actions' `ubuntu-latest` runners have unrestricted internet access
 and Docker pre-installed, so `ci.yml` runs this same integration suite
 for real on every push/PR. The PR for this repository was the actual first
 real-world verification of the original 16 tests, and CI was driven to
 green as part of delivering that work (see `handoff.md`); the same is true
-of `InventoryEventStreamingTests` for this addition -- it's new, real, and
-CI is what actually proves it passes.
+of `InventoryEventStreamingTests` for the ADR 0006 addition and of
+`SearchIndexingEventStreamingTests` for this one -- both are real, and CI
+is what actually proves they pass. The ADR 0007 session hit the identical
+`DockerImageNotFoundException` at the `testcontainers/ryuk` pull step, for
+all three fixtures (Mongo, NATS, and the new Meilisearch one) at once --
+same root cause, same fallback (trust CI).
 
 **A later session (security-hardening pass) confirmed the same root
 cause via a different symptom**: `service docker start` failed there

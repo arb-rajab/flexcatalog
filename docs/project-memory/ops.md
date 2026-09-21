@@ -3,17 +3,22 @@
 ## Running locally
 
 ```bash
-# Option A: docker compose (API + MongoDB + NATS + the inventory projector)
+# Option A: docker compose (API + MongoDB + NATS + Meilisearch + the
+# inventory projector + the search indexer)
 export FLEXCATALOG_JWT_SECRET=$(openssl rand -base64 48)
+export FLEXCATALOG_MEILI_MASTER_KEY=$(openssl rand -base64 24)
 docker compose up --build
 # API: http://localhost:8080  (Scalar docs at /scalar in Development)
 # MongoDB: localhost:27017
 # NATS: localhost:4222 (monitoring endpoint on :8222 inside the container)
+# Meilisearch: http://localhost:7700
 
 # Option B: dotnet directly, against a MongoDB (and, for the event-streaming
-# path, a NATS server) you run yourself
+# path, a NATS server, and for search indexing, a Meilisearch instance) you
+# run yourself
 dotnet run --project src/FlexCatalog.Api
 dotnet run --project src/FlexCatalog.InventoryProjector
+dotnet run --project src/FlexCatalog.SearchIndexer
 ```
 
 `ASPNETCORE_ENVIRONMENT=Development` (the docker-compose default) makes
@@ -32,8 +37,11 @@ Scalar UI.
 | `Jwt:Secret` | `Jwt__Secret` | HS256 signing secret; **required**, app fails to start if empty |
 | `Jwt:Issuer` / `Jwt:Audience` | `Jwt__Issuer` / `Jwt__Audience` | JWT validation |
 | `Jwt:ExpiryMinutes` | `Jwt__ExpiryMinutes` | Token lifetime |
-| `Nats:Url` | `Nats__Url` | NATS server URL (both `FlexCatalog.Api` and `FlexCatalog.InventoryProjector`, ADR 0006). Unreachable is non-fatal for the API -- see "What's deliberately not here" in `architecture.md`. |
+| `Nats:Url` | `Nats__Url` | NATS server URL (`FlexCatalog.Api`, `FlexCatalog.InventoryProjector`, and `FlexCatalog.SearchIndexer`, ADR 0006/0007). Unreachable is non-fatal for the API -- see "What's deliberately not here" in `architecture.md`. |
 | `Nats:SubjectPrefix` | `Nats__SubjectPrefix` | Subject prefix events are published/subscribed under; defaults to `flexcatalog.events` and normally left alone. |
+| `Meilisearch:Url` | `Meilisearch__Url` | Meilisearch instance URL (`FlexCatalog.Api` and `FlexCatalog.SearchIndexer`, ADR 0007). |
+| `Meilisearch:ApiKey` | `Meilisearch__ApiKey` | Meilisearch API key. `SearchIndexer` needs the master key (it creates/configures the index); `Api` only needs a search-scoped key in production -- see `Search/MeilisearchOptions.cs`. |
+| `Meilisearch:IndexName` | `Meilisearch__IndexName` | Index name both processes agree on; defaults to `products` and normally left alone. |
 
 ## Health
 
@@ -47,13 +55,16 @@ A stateless API container, a MongoDB instance (managed Atlas cluster, or
 self-hosted replica set), and, since ADR 0006, a NATS server plus the
 `FlexCatalog.InventoryProjector` worker as a fourth, independently
 deployable/scalable process -- see the Dockerfile, `Dockerfile.projector`,
-and docker-compose.yml. The API and the projector both hold no local
-state; horizontal scaling is "run more copies of the container," with
-MongoDB as the sole shared state. The projector is not on the API's
-request path (ADR 0006) -- it can be down, slow, or scaled independently
-without affecting `POST /api/products` or any other endpoint's
-availability or latency. TLS termination happens upstream of the
-container (`architecture.md` / `security.md`).
+and docker-compose.yml. Since ADR 0007, a fifth and sixth: a Meilisearch
+instance and the `FlexCatalog.SearchIndexer` worker (`Dockerfile.searchindexer`).
+The API, the projector, and the search indexer all hold no local state;
+horizontal scaling is "run more copies of the container," with MongoDB and
+Meilisearch as the shared state each depends on respectively. Neither the
+projector nor the search indexer is on the API's request path (ADR 0006 /
+0007) -- either can be down, slow, or scaled independently without
+affecting `POST /api/products` or any other endpoint's availability or
+latency. TLS termination happens upstream of the container
+(`architecture.md` / `security.md`).
 
 ## Indexes at startup
 
@@ -119,3 +130,25 @@ neither `docker build` (API or `Dockerfile.projector`, since both now
 run locally -- both are, as before, verified by CI. `dotnet build`/`dotnet
 format`/the unit test suite all ran and passed locally, same as always.
 See `CLAUDE.md` for the generalized version of this finding.
+
+### Addendum (2026-09-21, ADR 0007 search-indexer work)
+
+This sandbox had no `dotnet` at all pre-installed (unlike CLAUDE.md's
+description of a typical sandbox) -- `apt-get install -y dotnet-sdk-10.0`
+after `apt-get update` installed .NET 10.0.112 cleanly (Ubuntu's own
+archive, not gated the same way Docker Hub or `builds.dotnet.microsoft.com`
+are; the latter returned a 403 from the egress proxy when tried directly).
+Once installed, `dotnet build`/`dotnet test` (unit) both ran and passed
+locally as normal. Docker: `service docker start` failed the same way the
+2026-09-19 addendum describes (`ulimit: error setting limit: Operation not
+permitted`), but `sudo dockerd &` started a working daemon again, same
+workaround. `docker pull hello-world` confirmed the same
+`production.cloudfront.docker.com` 403 as every prior session. With a
+working daemon, the three integration-test container fixtures (Mongo,
+NATS, and the new Meilisearch one) were actually exercised this time
+(`dotnet test --filter SearchIndexingEventStreamingTests`) and all three
+failed identically and immediately at the `testcontainers/ryuk` pull step
+(`DockerImageNotFoundException`) -- confirming the new `MeilisearchContainerFixture`
+fails for the same environment reason as the existing fixtures, not a
+defect in it, without needing to reason about it indirectly. As before:
+trust CI for the integration suite.

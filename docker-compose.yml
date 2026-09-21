@@ -24,6 +24,22 @@ services:
       retries: 5
     command: ["-m", "8222"]
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.15
+    restart: unless-stopped
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili-data:/meili_data
+    environment:
+      MEILI_MASTER_KEY: "${FLEXCATALOG_MEILI_MASTER_KEY:?Set FLEXCATALOG_MEILI_MASTER_KEY before starting, e.g. export FLEXCATALOG_MEILI_MASTER_KEY=$(openssl rand -base64 24)}"
+      MEILI_NO_ANALYTICS: "true"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
@@ -36,6 +52,12 @@ services:
       Mongo__ConnectionString: "mongodb://mongo:27017"
       Mongo__DatabaseName: "flexcatalog"
       Nats__Url: "nats://nats:4222"
+      Meilisearch__Url: "http://meilisearch:7700"
+      # Known simplification (ADR 0007): reuses the same master key
+      # FlexCatalog.SearchIndexer writes with. A production deployment
+      # would give the API a search-only Meilisearch key instead -- see
+      # Search/MeilisearchOptions.cs.
+      Meilisearch__ApiKey: "${FLEXCATALOG_MEILI_MASTER_KEY:?Set FLEXCATALOG_MEILI_MASTER_KEY before starting, e.g. export FLEXCATALOG_MEILI_MASTER_KEY=$(openssl rand -base64 24)}"
       Jwt__Secret: "${FLEXCATALOG_JWT_SECRET:?Set FLEXCATALOG_JWT_SECRET before starting, e.g. export FLEXCATALOG_JWT_SECRET=$(openssl rand -base64 48)}"
       Jwt__Issuer: "flexcatalog"
       Jwt__Audience: "flexcatalog-clients"
@@ -44,6 +66,8 @@ services:
       mongo:
         condition: service_healthy
       nats:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
 
   inventory-projector:
@@ -61,5 +85,21 @@ services:
       nats:
         condition: service_healthy
 
+  search-indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.searchindexer
+    restart: unless-stopped
+    environment:
+      Nats__Url: "nats://nats:4222"
+      Meilisearch__Url: "http://meilisearch:7700"
+      Meilisearch__ApiKey: "${FLEXCATALOG_MEILI_MASTER_KEY:?Set FLEXCATALOG_MEILI_MASTER_KEY before starting, e.g. export FLEXCATALOG_MEILI_MASTER_KEY=$(openssl rand -base64 24)}"
+    depends_on:
+      nats:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+
 volumes:
   mongo-data:
+  meili-data:

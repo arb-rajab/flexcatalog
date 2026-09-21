@@ -99,8 +99,10 @@ rather than done now.
 16. **A second, genuinely different consumer** (e.g. a tenant-level
     activity feed, or a webhook-fanout service) to demonstrate that the
     same event stream supports multiple independent subscribers, not just
-    one -- not needed to prove the core pub/sub pattern, which one
-    consumer already does.
+    one. **Done** (ADR 0007) -- `FlexCatalog.SearchIndexer` is that second
+    consumer (builds a Meilisearch index instead of a MongoDB read-model),
+    proving the same stream fans out to genuinely different downstream
+    stores without either consumer knowing about the other.
 17. **Outbox pattern instead of an in-memory channel** between the
     repository write and the NATS publish, if this ever needs to survive
     an API process crash between the two. Deferred because the in-memory
@@ -108,3 +110,20 @@ rather than done now.
     delivery guarantee this iteration chose (ADR 0006) -- an outbox would
     upgrade that guarantee, which isn't free (it requires the event and
     the domain write to commit in the same MongoDB transaction).
+
+## Search indexing (ADR 0007)
+18. **Meilisearch search-only API key for `FlexCatalog.Api`**, instead of
+    today's shared master key (documented as a known simplification in
+    `Search/MeilisearchOptions.cs` and ADR 0007). Low-effort follow-up --
+    `MeilisearchClient.CreateKeyAsync` scoped to the `search` action --
+    deferred only because it needs a real running Meilisearch instance to
+    create the key against, which this sandbox can't reach (see
+    `testing.md`).
+19. **Move `flexcatalog.events.*` onto JetStream for `SearchIndexer` too**,
+    same rationale and same deferred status as backlog item 15 -- a search
+    index silently drifting after a missed event is the same accepted
+    tradeoff as the inventory projection's, not a new one introduced here.
+20. **Configurable/derived Meilisearch filterable-attribute list**, same
+    shape as backlog item 5 for the Mongo facet endpoint -- today's
+    `brand`/`sizes`/`colors`/`author` set is hardcoded and deliberately
+    reuses `ProductSearchService.FacetedAttributeFields`'s own vocabulary.
