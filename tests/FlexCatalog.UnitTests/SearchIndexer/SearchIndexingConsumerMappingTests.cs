@@ -40,7 +40,7 @@ public class SearchIndexingConsumerMappingTests
 
         var document = FlexCatalog.SearchIndexer.SearchIndexingConsumer.BuildDocumentFromCreated(envelope);
 
-        Assert.Equal("tenant-a:p1", document.Id);
+        Assert.Equal("tenant-a_p1", document.Id);
         Assert.Equal("tenant-a", document.TenantId);
         Assert.Equal("p1", document.ProductId);
         Assert.Equal("SKU-1", document.Sku);
@@ -84,7 +84,7 @@ public class SearchIndexingConsumerMappingTests
 
         var document = FlexCatalog.SearchIndexer.SearchIndexingConsumer.BuildDocumentFromUpdated(envelope);
 
-        Assert.Equal("tenant-b:p3", document.Id);
+        Assert.Equal("tenant-b_p3", document.Id);
         Assert.Equal("Jane Doe", document.Author);
         Assert.Equal("Books", document.CategoryType);
     }
@@ -101,7 +101,7 @@ public class SearchIndexingConsumerMappingTests
 
         var json = JsonSerializer.Serialize(update);
         using var doc = JsonDocument.Parse(json);
-        Assert.Equal("tenant-a:p1", doc.RootElement.GetProperty("id").GetString());
+        Assert.Equal("tenant-a_p1", doc.RootElement.GetProperty("id").GetString());
         Assert.Equal(5, doc.RootElement.GetProperty("quantityOnHand").GetInt32());
         Assert.True(doc.RootElement.GetProperty("inStock").GetBoolean());
     }
@@ -115,6 +115,6 @@ public class SearchIndexingConsumerMappingTests
 
         var documentId = FlexCatalog.SearchIndexer.SearchIndexingConsumer.BuildDeletionFromEnvelope(envelope);
 
-        Assert.Equal("tenant-a:p1", documentId);
+        Assert.Equal("tenant-a_p1", documentId);
     }
 }

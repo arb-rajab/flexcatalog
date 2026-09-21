@@ -9,11 +9,15 @@ namespace FlexCatalog.Contracts.Search;
 /// redefined by each side: one source of truth for the wire shape instead
 /// of two structurally-identical types drifting apart.
 ///
-/// <see cref="Id"/> is "{tenantId}:{productId}" -- mirrors
-/// FlexCatalog.InventoryProjector.ProductProjection's own id scheme, and
-/// gives every tenant's products distinct primary keys in the one shared
-/// index (see ADR 0007's tenant-isolation section; ADR 0001 chose the same
-/// shared-collection-plus-discriminator shape for MongoDB).
+/// <see cref="Id"/> is "{tenantId}_{productId}" -- gives every tenant's
+/// products distinct primary keys in the one shared index, the same
+/// discriminator-based idea as FlexCatalog.InventoryProjector.ProductProjection's
+/// own id scheme (see ADR 0007's tenant-isolation section; ADR 0001 chose
+/// the same shared-collection-plus-discriminator shape for MongoDB) --
+/// but with `_` rather than `:` as the separator, because unlike a MongoDB
+/// `_id`, a Meilisearch document id may only contain letters, digits,
+/// hyphens, and underscores; a colon is rejected outright
+/// (`invalid_document_id`).
 ///
 /// <see cref="Brand"/>/<see cref="Sizes"/>/<see cref="Colors"/>/
 /// <see cref="Author"/> are the category-specific attributes flattened out
@@ -56,5 +60,5 @@ public sealed class ProductSearchDocument
 
     public string? Author { get; set; }
 
-    public static string DocumentId(string tenantId, string productId) => $"{tenantId}:{productId}";
+    public static string DocumentId(string tenantId, string productId) => $"{tenantId}_{productId}";
 }

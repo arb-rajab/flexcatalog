@@ -110,12 +110,18 @@ the publisher and every independent consumer.
 ### The Meilisearch document and tenant isolation
 
 One shared index (`products`), one document per product, `id` =
-`"{tenantId}:{productId}"` (`ProductSearchDocument.DocumentId`) -- the same
+`"{tenantId}_{productId}"` (`ProductSearchDocument.DocumentId`) -- the same
 shared-collection-plus-discriminator shape ADR 0001 chose for MongoDB over
 database-per-tenant or collection-per-tenant, for the identical reason:
 a handful of tenants at demo scale doesn't justify per-tenant index
 provisioning, and the discriminator only works if every query is forced
-to include it.
+to include it. The separator is `_`, not the `:` FlexCatalog.InventoryProjector's
+`ProductProjection.ProjectionId` uses for the same idea in MongoDB --
+Meilisearch document ids may only contain letters, digits, hyphens, and
+underscores, and reject a colon outright (`invalid_document_id`). Caught
+by `SearchIndexingEventStreamingTests` against a real Meilisearch instance,
+not by the pure mapping unit tests, which is exactly the boundary that
+integration test exists to cover.
 
 That forcing happens structurally, not by caller convention, mirroring
 `ProductRepository.AggregateTenantScopedAsync`:
