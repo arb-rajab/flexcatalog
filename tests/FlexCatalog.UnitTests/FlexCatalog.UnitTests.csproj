@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FlexCatalog.Api\FlexCatalog.Api.csproj" />
+    <ProjectReference Include="..\..\src\FlexCatalog.InventoryProjector\FlexCatalog.InventoryProjector.csproj" />
     <ProjectReference Include="..\..\src\FlexCatalog.SearchIndexer\FlexCatalog.SearchIndexer.csproj" />
   </ItemGroup>
 

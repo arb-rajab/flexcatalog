@@ -78,8 +78,14 @@ public sealed class InventoryProjectionConsumer(
             case EventTypes.ProductCreated:
                 await HandleProductCreatedAsync(envelope, ct);
                 break;
+            case EventTypes.ProductUpdated:
+                await HandleProductUpdatedAsync(envelope, ct);
+                break;
             case EventTypes.InventoryAdjusted:
                 await HandleInventoryAdjustedAsync(envelope, ct);
+                break;
+            case EventTypes.ProductDeleted:
+                await HandleProductDeletedAsync(envelope, ct);
                 break;
             default:
                 logger.LogDebug("Ignoring unrecognized event type {EventType}", envelope.EventType);
@@ -87,12 +93,19 @@ public sealed class InventoryProjectionConsumer(
         }
     }
 
-    private async Task HandleProductCreatedAsync(DomainEventEnvelope envelope, CancellationToken ct)
+    /// <summary>
+    /// Pure envelope-to-projection mapping, exposed `internal` (via
+    /// InternalsVisibleTo, mirroring
+    /// SearchIndexingConsumer.BuildDocumentFromCreated's rationale) so the
+    /// mapping logic is unit-testable without a live MongoDB -- only the
+    /// fact that it persists correctly needs the integration test.
+    /// </summary>
+    internal static ProductProjection BuildProjectionFromCreated(DomainEventEnvelope envelope)
     {
         var payload = JsonSerializer.Deserialize<ProductCreatedPayload>(envelope.PayloadJson)
             ?? throw new InvalidOperationException($"'{envelope.EventType}' payload failed to deserialize.");
 
-        var projection = new ProductProjection
+        return new ProductProjection
         {
             Id = ProductProjection.ProjectionId(envelope.TenantId, payload.ProductId),
             TenantId = envelope.TenantId,
@@ -105,6 +118,50 @@ public sealed class InventoryProjectionConsumer(
             LastEventType = envelope.EventType,
             LastEventAtUtc = envelope.OccurredAtUtc,
         };
+    }
+
+    /// <summary>
+    /// Same shape as <see cref="BuildProjectionFromCreated"/> -- ProductUpdated
+    /// carries a full current snapshot (like ProductCreated), not a diff, so
+    /// a rename/re-categorize/inventory edit can be applied as a full
+    /// upsert-replace instead of a targeted field update.
+    /// </summary>
+    internal static ProductProjection BuildProjectionFromUpdated(DomainEventEnvelope envelope)
+    {
+        var payload = JsonSerializer.Deserialize<ProductUpdatedPayload>(envelope.PayloadJson)
+            ?? throw new InvalidOperationException($"'{envelope.EventType}' payload failed to deserialize.");
+
+        return new ProductProjection
+        {
+            Id = ProductProjection.ProjectionId(envelope.TenantId, payload.ProductId),
+            TenantId = envelope.TenantId,
+            ProductId = payload.ProductId,
+            Sku = payload.Sku,
+            Name = payload.Name,
+            CategoryType = payload.CategoryType,
+            QuantityOnHand = payload.QuantityOnHand,
+            InStock = payload.InStock,
+            LastEventType = envelope.EventType,
+            LastEventAtUtc = envelope.OccurredAtUtc,
+        };
+    }
+
+    /// <summary>
+    /// The projection id to delete on <see cref="EventTypes.ProductDeleted"/> --
+    /// a deleted product must not keep surfacing in this read-model, the
+    /// same reasoning as SearchIndexingConsumer.BuildDeletionFromEnvelope.
+    /// </summary>
+    internal static string BuildDeletionIdFromEnvelope(DomainEventEnvelope envelope)
+    {
+        var payload = JsonSerializer.Deserialize<ProductDeletedPayload>(envelope.PayloadJson)
+            ?? throw new InvalidOperationException($"'{envelope.EventType}' payload failed to deserialize.");
+
+        return ProductProjection.ProjectionId(envelope.TenantId, payload.ProductId);
+    }
+
+    private async Task HandleProductCreatedAsync(DomainEventEnvelope envelope, CancellationToken ct)
+    {
+        var projection = BuildProjectionFromCreated(envelope);
 
         await projections.ReplaceOneAsync(
             p => p.Id == projection.Id,
@@ -114,7 +171,31 @@ public sealed class InventoryProjectionConsumer(
 
         logger.LogInformation(
             "Projected {EventType}: {Sku} (tenant {TenantId}), quantity {Quantity}",
-            envelope.EventType, payload.Sku, envelope.TenantId, payload.QuantityOnHand);
+            envelope.EventType, projection.Sku, envelope.TenantId, projection.QuantityOnHand);
+    }
+
+    private async Task HandleProductUpdatedAsync(DomainEventEnvelope envelope, CancellationToken ct)
+    {
+        var projection = BuildProjectionFromUpdated(envelope);
+
+        await projections.ReplaceOneAsync(
+            p => p.Id == projection.Id,
+            projection,
+            new ReplaceOptions { IsUpsert = true },
+            ct);
+
+        logger.LogInformation(
+            "Projected {EventType}: {Sku} (tenant {TenantId}), quantity {Quantity}",
+            envelope.EventType, projection.Sku, envelope.TenantId, projection.QuantityOnHand);
+    }
+
+    private async Task HandleProductDeletedAsync(DomainEventEnvelope envelope, CancellationToken ct)
+    {
+        var id = BuildDeletionIdFromEnvelope(envelope);
+
+        await projections.DeleteOneAsync(p => p.Id == id, ct);
+
+        logger.LogInformation("Removed projection {Id} (tenant {TenantId})", id, envelope.TenantId);
     }
 
     private async Task HandleInventoryAdjustedAsync(DomainEventEnvelope envelope, CancellationToken ct)
