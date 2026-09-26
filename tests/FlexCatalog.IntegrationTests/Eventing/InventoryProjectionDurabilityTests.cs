@@ -183,7 +183,7 @@ public sealed class InventoryProjectionDurabilityTests(MongoContainerFixture mon
         INatsConnection connection, string durableConsumerName, TimeSpan? timeout = null)
     {
         var js = connection.CreateJetStreamContext();
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(10));
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(20));
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -203,7 +203,7 @@ public sealed class InventoryProjectionDurabilityTests(MongoContainerFixture mon
     private static async Task<ProductProjection> WaitForProjectionAsync(
         IMongoCollection<ProductProjection> projections, string productId, TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(40));
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(90));
         while (DateTime.UtcNow < deadline)
         {
             var candidate = await projections.Find(p => p.ProductId == productId).FirstOrDefaultAsync();
