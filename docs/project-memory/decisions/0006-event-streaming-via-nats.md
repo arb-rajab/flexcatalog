@@ -126,15 +126,15 @@ a way that could turn an event-publish failure into a failed HTTP request.
 
 ## Consequences
 
-- **At-most-once, no ordering guarantee across restarts, no replay.** If
-  `FlexCatalog.InventoryProjector` is down when an event is published, that
-  event is gone -- there is no backlog for it to catch up on when it comes
-  back. This is the accepted tradeoff of choosing best-effort delivery over
-  primary-path risk (see above), not an oversight. A production system that
-  needed the projection to always converge regardless of consumer uptime
-  would move the subjects onto JetStream streams and switch the projector
-  to a durable consumer -- a config-level change on top of the same
-  publish/subscribe code, not a rewrite.
+- **At-most-once, no ordering guarantee across restarts, no replay** *was
+  true of both consumers until ADR 0008*, which moved
+  `InventoryProjector`'s and `SearchIndexer`'s own subscriptions onto
+  durable JetStream consumers -- exactly the "config-level change on top
+  of the same publish/subscribe code" upgrade path anticipated below,
+  once the resulting lost-event gap was worth closing. The publish side
+  described above (fire-and-forget, off the request path, can never fail
+  or slow the primary write) is unchanged by that ADR and remains exactly
+  as described here.
 - **The projection can lag or (after a missed event) permanently
   under/over-count** relative to MongoDB's `products` collection, which
   remains the single source of truth. The projection is a convenience

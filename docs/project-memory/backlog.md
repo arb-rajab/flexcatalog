@@ -96,6 +96,9 @@ rather than done now.
     introduction specifically because JetStream's ack/retry semantics are
     stronger than requirement #4 asked for on the primary write path --
     same client library and subjects, an additive change, not a rewrite.
+    **Done** (ADR 0008) -- both `InventoryProjector` and `SearchIndexer`
+    now consume via durable JetStream consumers; the publish side is
+    unchanged plain core `PublishAsync`, exactly as anticipated here.
 16. **A second, genuinely different consumer** (e.g. a tenant-level
     activity feed, or a webhook-fanout service) to demonstrate that the
     same event stream supports multiple independent subscribers, not just
@@ -123,6 +126,8 @@ rather than done now.
     same rationale and same deferred status as backlog item 15 -- a search
     index silently drifting after a missed event is the same accepted
     tradeoff as the inventory projection's, not a new one introduced here.
+    **Done** (ADR 0008), alongside item 15 -- same durable-consumer/
+    dead-letter shape, different durable consumer name.
 20. **Configurable/derived Meilisearch filterable-attribute list**, same
     shape as backlog item 5 for the Mongo facet endpoint -- today's
     `brand`/`sizes`/`colors`/`author` set is hardcoded and deliberately
