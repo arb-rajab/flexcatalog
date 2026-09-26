@@ -14,6 +14,9 @@ namespace FlexCatalog.IntegrationTests.Fixtures;
 /// </summary>
 public sealed class NatsContainerFixture : IAsyncLifetime
 {
+    // Testcontainers.Nats's NatsBuilder already passes `--jetstream` by
+    // default, so no extra configuration is needed here for ADR 0008's
+    // durable consumers to work against this container.
     public NatsContainer Container { get; } = new NatsBuilder("nats:2.10-alpine").Build();
 
     public async Task InitializeAsync() => await Container.StartAsync();

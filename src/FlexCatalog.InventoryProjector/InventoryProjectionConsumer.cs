@@ -3,6 +3,9 @@ using FlexCatalog.Contracts.Eventing;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using NATS.Client.Core;
+using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
+using NATS.Net;
 
 namespace FlexCatalog.InventoryProjector;
 
@@ -15,6 +18,13 @@ namespace FlexCatalog.InventoryProjector;
 /// from the API itself: an `InventoryAdjusted` event that drops quantity to
 /// zero or below is logged as a distinct out-of-stock warning, which the
 /// API's own write path has no equivalent of.
+///
+/// Subscribes via a durable JetStream consumer rather than core NATS
+/// (ADR 0008): the publish side (FlexCatalog.Api's
+/// DomainEventPublishingService) is untouched plain core `PublishAsync`,
+/// but this consumer's own durable name lets it resume from wherever it
+/// last acknowledged if it was down when events published, instead of
+/// losing them.
 /// </summary>
 public sealed class InventoryProjectionConsumer(
     INatsConnection connection,
@@ -22,40 +32,92 @@ public sealed class InventoryProjectionConsumer(
     IOptions<NatsOptions> natsOptions,
     ILogger<InventoryProjectionConsumer> logger) : BackgroundService
 {
+    /// <summary>
+    /// After this many delivery attempts, a message is treated as poison
+    /// (ADR 0008) -- logged as a dead letter and terminated rather than
+    /// redelivered forever.
+    /// </summary>
+    public const int MaxDeliverAttempts = 5;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var subject = $"{natsOptions.Value.SubjectPrefix}.>";
+        var options = natsOptions.Value;
+        var subject = $"{options.SubjectPrefix}.>";
+        var js = connection.CreateJetStreamContext();
 
-        // NatsConnection.SubscribeAsync connects eagerly: if NATS is down
-        // when this starts (e.g. the two containers in docker-compose start
-        // in parallel), the very first MoveNextAsync throws instead of
-        // waiting to connect lazily. Without this loop, that exception
-        // would propagate out of ExecuteAsync and, under the default
-        // BackgroundServiceExceptionBehavior, take the whole host down --
-        // a broker hiccup killing the process is not the resilience this
-        // consumer is meant to demonstrate. Retry with a fixed backoff
-        // until NATS is reachable or the host is stopping.
+        // Same rationale as the pre-JetStream version of this loop: any of
+        // stream/consumer setup or the connection itself can fail if NATS
+        // isn't reachable yet (e.g. containers starting in parallel), and
+        // that must retry with backoff rather than take the host down via
+        // BackgroundServiceExceptionBehavior.
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                logger.LogInformation("Subscribing to {Subject}", subject);
-                await foreach (var msg in connection.SubscribeAsync<string>(subject, cancellationToken: stoppingToken))
+                await js.CreateOrUpdateStreamAsync(
+                    new StreamConfig(options.StreamName, [subject]), stoppingToken);
+
+                var consumer = await js.CreateOrUpdateConsumerAsync(
+                    options.StreamName,
+                    new ConsumerConfig(options.DurableConsumerName)
+                    {
+                        AckPolicy = ConsumerConfigAckPolicy.Explicit,
+                        DeliverPolicy = ConsumerConfigDeliverPolicy.All,
+                        MaxDeliver = MaxDeliverAttempts,
+                        AckWait = TimeSpan.FromSeconds(30),
+                        FilterSubject = subject,
+                    },
+                    stoppingToken);
+
+                logger.LogInformation(
+                    "Consuming {Subject} via durable consumer {Consumer} on stream {Stream}",
+                    subject, options.DurableConsumerName, options.StreamName);
+
+                await foreach (var msg in consumer.ConsumeAsync<string>(cancellationToken: stoppingToken))
                 {
-                    try
-                    {
-                        await HandleAsync(msg.Data, stoppingToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to process message on subject {Subject}", msg.Subject);
-                    }
+                    await ProcessAsync(msg, stoppingToken);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Subscription to {Subject} failed; retrying in 5s.", subject);
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Processes one JetStream message and resolves its ack: success acks,
+    /// a transient failure naks for redelivery, and a failure that has
+    /// already exhausted <see cref="MaxDeliverAttempts"/> is dead-lettered
+    /// (logged, then terminated so it stops redelivering) rather than
+    /// retried forever (ADR 0008).
+    /// </summary>
+    internal async Task ProcessAsync(INatsJSMsg<string?> msg, CancellationToken ct)
+    {
+        try
+        {
+            await HandleAsync(msg.Data, ct);
+            await msg.AckAsync(cancellationToken: ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var deliveryCount = msg.Metadata?.NumDelivered ?? 1;
+            if (deliveryCount >= MaxDeliverAttempts)
+            {
+                logger.LogError(
+                    ex,
+                    "Dead-lettering message on subject {Subject} after {DeliveryCount} delivery attempts. Envelope: {Envelope}",
+                    msg.Subject, deliveryCount, msg.Data);
+                await msg.AckTerminateAsync(cancellationToken: ct);
+            }
+            else
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to process message on subject {Subject} (attempt {DeliveryCount}/{MaxDeliverAttempts}); will redeliver.",
+                    msg.Subject, deliveryCount, MaxDeliverAttempts);
+                await msg.NakAsync(cancellationToken: ct);
             }
         }
     }

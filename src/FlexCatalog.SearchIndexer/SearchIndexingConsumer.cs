@@ -4,6 +4,9 @@ using FlexCatalog.Contracts.Search;
 using Meilisearch;
 using Microsoft.Extensions.Options;
 using NATS.Client.Core;
+using NATS.Client.JetStream;
+using NATS.Client.JetStream.Models;
+using NATS.Net;
 
 namespace FlexCatalog.SearchIndexer;
 
@@ -16,6 +19,10 @@ namespace FlexCatalog.SearchIndexer;
 /// a different downstream store. Never queries FlexCatalog.Api's own
 /// `products` collection; everything it writes to Meilisearch comes from
 /// the event payloads alone.
+///
+/// Subscribes via a durable JetStream consumer rather than core NATS
+/// (ADR 0008) -- see InventoryProjectionConsumer's own comment for the
+/// full rationale; the publish side is untouched either way.
 /// </summary>
 public sealed class SearchIndexingConsumer(
     INatsConnection connection,
@@ -24,39 +31,92 @@ public sealed class SearchIndexingConsumer(
     IOptions<NatsOptions> natsOptions,
     ILogger<SearchIndexingConsumer> logger) : BackgroundService
 {
+    /// <summary>
+    /// Same dead-letter threshold and reasoning as
+    /// InventoryProjectionConsumer.MaxDeliverAttempts (ADR 0008).
+    /// </summary>
+    public const int MaxDeliverAttempts = 5;
+
     private Meilisearch.Index Index => meilisearch.Index(meilisearchOptions.Value.IndexName);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await EnsureIndexConfiguredAsync(stoppingToken);
 
-        var subject = $"{natsOptions.Value.SubjectPrefix}.>";
+        var options = natsOptions.Value;
+        var subject = $"{options.SubjectPrefix}.>";
+        var js = connection.CreateJetStreamContext();
 
         // Same retry/backoff discipline as InventoryProjectionConsumer (see
-        // its comment for the full rationale): SubscribeAsync connects
-        // eagerly, so a NATS outage at startup must not take this
-        // BackgroundService's host down.
+        // its comment for the full rationale): stream/consumer setup and
+        // the connection itself can fail if NATS isn't reachable yet, and
+        // that must retry rather than take this BackgroundService's host
+        // down.
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                logger.LogInformation("Subscribing to {Subject}", subject);
-                await foreach (var msg in connection.SubscribeAsync<string>(subject, cancellationToken: stoppingToken))
+                await js.CreateOrUpdateStreamAsync(
+                    new StreamConfig(options.StreamName, [subject]), stoppingToken);
+
+                var consumer = await js.CreateOrUpdateConsumerAsync(
+                    options.StreamName,
+                    new ConsumerConfig(options.DurableConsumerName)
+                    {
+                        AckPolicy = ConsumerConfigAckPolicy.Explicit,
+                        DeliverPolicy = ConsumerConfigDeliverPolicy.All,
+                        MaxDeliver = MaxDeliverAttempts,
+                        AckWait = TimeSpan.FromSeconds(30),
+                        FilterSubject = subject,
+                    },
+                    stoppingToken);
+
+                logger.LogInformation(
+                    "Consuming {Subject} via durable consumer {Consumer} on stream {Stream}",
+                    subject, options.DurableConsumerName, options.StreamName);
+
+                await foreach (var msg in consumer.ConsumeAsync<string>(cancellationToken: stoppingToken))
                 {
-                    try
-                    {
-                        await HandleAsync(msg.Data, stoppingToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Failed to process message on subject {Subject}", msg.Subject);
-                    }
+                    await ProcessAsync(msg, stoppingToken);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogWarning(ex, "Subscription to {Subject} failed; retrying in 5s.", subject);
                 await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Same ack/nak/dead-letter resolution as
+    /// InventoryProjectionConsumer.ProcessAsync (ADR 0008).
+    /// </summary>
+    internal async Task ProcessAsync(INatsJSMsg<string?> msg, CancellationToken ct)
+    {
+        try
+        {
+            await HandleAsync(msg.Data, ct);
+            await msg.AckAsync(cancellationToken: ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var deliveryCount = msg.Metadata?.NumDelivered ?? 1;
+            if (deliveryCount >= MaxDeliverAttempts)
+            {
+                logger.LogError(
+                    ex,
+                    "Dead-lettering message on subject {Subject} after {DeliveryCount} delivery attempts. Envelope: {Envelope}",
+                    msg.Subject, deliveryCount, msg.Data);
+                await msg.AckTerminateAsync(cancellationToken: ct);
+            }
+            else
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to process message on subject {Subject} (attempt {DeliveryCount}/{MaxDeliverAttempts}); will redeliver.",
+                    msg.Subject, deliveryCount, MaxDeliverAttempts);
+                await msg.NakAsync(cancellationToken: ct);
             }
         }
     }

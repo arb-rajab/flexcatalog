@@ -22,7 +22,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: ["-m", "8222"]
+    command: ["-js", "-m", "8222"]
 
   meilisearch:
     image: getmeili/meilisearch:v1.15

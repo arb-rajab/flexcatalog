@@ -11,6 +11,7 @@
     <PackageReference Include="Meilisearch" Version="0.20.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
     <PackageReference Include="NATS.Client.Core" Version="3.2.0" />
+    <PackageReference Include="NATS.Client.JetStream" Version="3.2.0" />
   </ItemGroup>
 
   <ItemGroup>
