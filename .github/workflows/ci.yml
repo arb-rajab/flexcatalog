@@ -59,3 +59,9 @@ jobs:
 
       - name: Build API image
         run: docker build -t flexcatalog-api:ci .
+
+      - name: Build InventoryProjector image
+        run: docker build -t flexcatalog-projector:ci -f Dockerfile.projector .
+
+      - name: Build SearchIndexer image
+        run: docker build -t flexcatalog-searchindexer:ci -f Dockerfile.searchindexer .

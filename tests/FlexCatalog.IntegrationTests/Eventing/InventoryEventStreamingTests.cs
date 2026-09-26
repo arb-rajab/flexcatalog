@@ -107,6 +107,28 @@ public sealed class InventoryEventStreamingTests : IAsyncLifetime
         var afterAdjust = await WaitForProjectionAsync(created.Id, p => p.QuantityOnHand == 0);
         Assert.False(afterAdjust.InStock);
         Assert.Equal(EventTypes.InventoryAdjusted, afterAdjust.LastEventType);
+
+        var update = await client.PutAsJsonAsync($"/api/products/{created.Id}", new UpsertProductRequest(
+            "EVT-STREAM-1", "Renamed Widget", "desc", CategoryType.Electronics, 15m, "USD", true, 25, null,
+            new ElectronicsAttributes { Brand = "Acme" }));
+        update.EnsureSuccessStatusCode();
+
+        // ProductUpdated: this is the regression this test guards -- before
+        // InventoryProjectionConsumer subscribed to it, the rename/quantity
+        // change above would never reach the projection and QuantityOnHand
+        // would stay stuck at 0 from the adjustment above.
+        var afterUpdate = await WaitForProjectionAsync(created.Id, p => p.LastEventType == EventTypes.ProductUpdated);
+        Assert.Equal("Renamed Widget", afterUpdate.Name);
+        Assert.Equal(25, afterUpdate.QuantityOnHand);
+        Assert.True(afterUpdate.InStock);
+
+        var delete = await client.DeleteAsync($"/api/products/{created.Id}");
+        delete.EnsureSuccessStatusCode();
+
+        // ProductDeleted: same regression -- without the consumer handling
+        // it, the projection document for a deleted product would linger
+        // forever in "productInventoryProjection".
+        await WaitForProjectionRemovedAsync(created.Id);
     }
 
     private async Task<ProductProjection> WaitForProjectionAsync(
@@ -126,5 +148,22 @@ public sealed class InventoryEventStreamingTests : IAsyncLifetime
 
         Assert.Fail($"Projection for product '{productId}' did not reach the expected state within the timeout.");
         return null!;
+    }
+
+    private async Task WaitForProjectionRemovedAsync(string productId, TimeSpan? timeout = null)
+    {
+        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(15));
+        while (DateTime.UtcNow < deadline)
+        {
+            var candidate = await _projections.Find(p => p.ProductId == productId).FirstOrDefaultAsync();
+            if (candidate is null)
+            {
+                return;
+            }
+
+            await Task.Delay(200);
+        }
+
+        Assert.Fail($"Projection for product '{productId}' was not removed within the timeout.");
     }
 }

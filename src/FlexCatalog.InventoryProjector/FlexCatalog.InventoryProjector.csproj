@@ -17,4 +17,8 @@
     <ProjectReference Include="..\FlexCatalog.Contracts\FlexCatalog.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FlexCatalog.UnitTests" />
+  </ItemGroup>
+
 </Project>
