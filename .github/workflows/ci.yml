@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build-and-test:
-    name: Build and test
+    name: build-and-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +57,7 @@ jobs:
           path: ./test-results
 
   docker-build:
-    name: Docker build
+    name: docker-build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
