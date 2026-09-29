@@ -69,6 +69,14 @@ public sealed class InventoryProjectionDurabilityTests(MongoContainerFixture mon
             await publisherConnection.PublishAsync(
                 "flexcatalog.events.product.created",
                 JsonSerializer.Serialize(CreatedEnvelope(tenantId, productId)));
+
+            // PublishAsync only hands the message to the connection's
+            // write buffer; disposing the connection straight away can
+            // drop it before it reaches the server, which would make the
+            // catch-up below wait forever for a message JetStream never
+            // saw. A ping round trip guarantees the server has processed
+            // the publish (and so captured it in the stream) first.
+            await publisherConnection.PingAsync();
         }
 
         // Confirm it really wasn't processed live -- nothing was
