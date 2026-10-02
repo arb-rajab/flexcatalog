@@ -19,10 +19,10 @@ jobs:
     name: build-and-test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -51,7 +51,7 @@ jobs:
 
       - name: Publish test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: ./test-results
@@ -60,7 +60,7 @@ jobs:
     name: docker-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build API image
         run: docker build -t flexcatalog-api:ci .
@@ -75,7 +75,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -92,15 +92,15 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: csharp
           build-mode: manual
@@ -110,7 +110,7 @@ jobs:
         run: dotnet build FlexCatalog.slnx --configuration Release
 
       - name: Analyze
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:csharp"
 
@@ -118,10 +118,10 @@ jobs:
     name: Dependency scan (NuGet vulnerabilities)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
