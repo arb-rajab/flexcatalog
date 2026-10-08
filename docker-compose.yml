@@ -13,7 +13,7 @@ services:
       retries: 5
 
   nats:
-    image: nats:2.10-alpine
+    image: nats:2.15-alpine
     restart: unless-stopped
     ports:
       - "4222:4222"
@@ -25,7 +25,7 @@ services:
     command: ["-js", "-m", "8222"]
 
   meilisearch:
-    image: getmeili/meilisearch:v1.15
+    image: getmeili/meilisearch:v1.54
     restart: unless-stopped
     ports:
       - "7700:7700"
