@@ -4,10 +4,10 @@ _Last updated: 2026-10-08. Maintained during the Dependabot clean-up pass; updat
 
 ## Configuration
 
-- Ecosystems covered: nuget (`/`), github-actions (`/`), docker (`/`).
+- Ecosystems covered: nuget (`/`), github-actions (`/`), docker (`/`), docker-compose (`/`).
 - Grouping: none (one PR per update).
 - Schedule: weekly.
-- Ignore rules: none.
+- Ignore rules: docker-compose image majors (stateful services need a deliberate migration).
 
 ## State at last update
 
