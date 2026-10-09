@@ -40,6 +40,7 @@ _Last updated: 2026-10-09. Maintained during the Dependabot clean-up pass; updat
 - Docs-PR batching (convention set by the repo owner, 2026-10-09): during a loop, status-log updates are collected and land in one docs PR per repo when the loop ends, not one PR per rescan cycle. Every PR, docs-only included, runs the full required CI on purpose. A path filter would leave a required check unreported on a docs-only PR and block it. Matrix jobs skipped at job level do not report under their expanded names. GitHub's `CodeQL` check (app 57789) only appears after a CodeQL analysis. So do not add path filters or job-level skips for docs-only changes; batch the docs PRs instead.
 - Every job sets `timeout-minutes` (2026-10-09): at least about 4x its longest run in the last ~45 runs, 30 minutes for most jobs. Raise a cap in the same PR that makes a job slower; do not remove it.
 - CodeQL's `Cannot build an overlay-base database because build-mode is set to "manual"` warning on `main` is informational: CodeQL falls back to a full database, and the analysis still runs. Not a gap.
+- CodeQL analyzes the `actions` language (this repo's workflow files) since 2026-10-09, in a separate `CodeQL (actions)` job so the existing CodeQL check names, some of them required, are unchanged. Found in rescan cycle 10 and fixed at the repo owner's request after the loop stopped. GitHub's required `CodeQL` check gates its alerts like any other language's.
 
 ## Deferred (not re-raised each pass)
 
@@ -47,4 +48,3 @@ _Last updated: 2026-10-09. Maintained during the Dependabot clean-up pass; updat
 - Ignored major versions are listed in `.github/dependabot.yml` with the reason for each.
 - Re-check exemptions before their `effectiveUntil` date (2026-11-15) and drop them once upstream fixes ship.
 - Alerts read 2026-10-09 with the repo owner's PAT, run on their machine (Claude sessions still get 403: the proxy sends a GitHub App token instead of `GH_ALERTS_TOKEN`, even a PAT passed explicitly). No open Dependabot or code-scanning alerts. Re-read 2026-10-09 after rescan cycle 2: still no open alerts.
-- CodeQL does not analyze the `actions` language (this repo's workflow files) here; found in rescan cycle 10 (2026-10-09) and reported, not fixed, because it was the third cycle in a row with a new gap. The fix is adding `actions` to the CodeQL job's languages; GitHub's required `CodeQL` check would then also gate new workflow alerts. Cycle 5's manual review of triggers, permissions and pins found no workflow issue.
