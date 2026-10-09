@@ -25,10 +25,10 @@ _Last updated: 2026-10-09. Maintained during the Dependabot clean-up pass; updat
 - `SearchIndexingEventStreamingTests` (Meilisearch) is occasionally flaky; one re-run on the same commit is the accepted check.
 - Merge policy (deliberate choice by the repo owner, 2026-10-08): every PR, major-version dependency bumps included, is merged as soon as all of its required checks are green, confirmed per PR. This repo is a code showcase with no business or sensitive dependency, so green checks are the only gate. Red, pending or conflicted PRs are fixed or closed instead.
 - Every Linux job runs on `ubuntu-24.04` (pinned 2026-10-09; it is what `ubuntu-latest` resolved to). GitHub moves `ubuntu-latest` to Ubuntu 26 from 2026-10-19, and an unattended image change could turn every check red at once. Move to `ubuntu-26.04` deliberately, in one PR whose CI has run on it. Dependabot does not bump `runs-on` labels.
-- `SECURITY.md` added 2026-10-09 (rescan cycle 2: the repo had no security policy GitHub recognises; `docs/project-memory/security.md` is design notes). It sends reporters to GitHub private vulnerability reporting, which is disabled here. Enabling it needs the Administration permission on the owner's token; escalation requested 2026-10-09.
+- `SECURITY.md` added 2026-10-09 (rescan cycle 2: the repo had no security policy GitHub recognises; `docs/project-memory/security.md` is design notes). It sends reporters to GitHub private vulnerability reporting, which was disabled here; the repo owner changed it through the API on 2026-10-09 and the read-back confirmed it (`enabled: true`).
 
 ## Deferred (not re-raised each pass)
 
 - Ignored major versions are listed in `.github/dependabot.yml` with the reason for each.
 - Re-check exemptions before their `effectiveUntil` date (2026-11-15) and drop them once upstream fixes ship.
-- Alerts read 2026-10-09 with the repo owner's PAT, run on their machine (Claude sessions still get 403: the proxy sends a GitHub App token instead of `GH_ALERTS_TOKEN`, even a PAT passed explicitly). No open Dependabot or code-scanning alerts.
+- Alerts read 2026-10-09 with the repo owner's PAT, run on their machine (Claude sessions still get 403: the proxy sends a GitHub App token instead of `GH_ALERTS_TOKEN`, even a PAT passed explicitly). No open Dependabot or code-scanning alerts. Re-read 2026-10-09 after rescan cycle 2: still no open alerts.
