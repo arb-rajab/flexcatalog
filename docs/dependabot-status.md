@@ -41,6 +41,7 @@ _Last updated: 2026-10-09. Maintained during the Dependabot clean-up pass; updat
 - Every job sets `timeout-minutes` (2026-10-09): at least about 4x its longest run in the last ~45 runs, 30 minutes for most jobs. Raise a cap in the same PR that makes a job slower; do not remove it.
 - CodeQL's `Cannot build an overlay-base database because build-mode is set to "manual"` warning on `main` is informational: CodeQL falls back to a full database, and the analysis still runs. Not a gap.
 - CodeQL analyzes the `actions` language (this repo's workflow files) since 2026-10-09, in a separate `CodeQL (actions)` job so the existing CodeQL check names, some of them required, are unchanged. Found in rescan cycle 10 and fixed at the repo owner's request after the loop stopped. GitHub's required `CodeQL` check gates its alerts like any other language's.
+- CI pulls Docker Hub images through mirror.gcr.io since 2026-10-09: the build-and-test job points the Docker daemon at mirror.gcr.io for the Testcontainers pulls (mongo, nats, meilisearch, ryuk); Docker Hub stays the fallback. Added at the repo owner's request after a Docker Hub outage (rate limits, then `auth.docker.io` 500s) failed every Docker-pulling job that evening. mirror.gcr.io is Google's cache of popular Docker Hub images, not an on-demand proxy: daemon and BuildKit mirrors fall back to Docker Hub on a miss, but an explicit `mirror.gcr.io/...` service image has no fallback, so if a new service tag 404s there, use the plain Docker Hub name for it.
 
 ## Deferred (not re-raised each pass)
 
