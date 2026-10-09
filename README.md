@@ -67,3 +67,7 @@ docs/project-memory/              Brief, requirements, architecture, security,
 - [Handoff](docs/project-memory/handoff.md)
 - [Release notes](docs/project-memory/release-notes.md)
 - [Retirement plan](docs/project-memory/retirement-plan.md)
+
+## License
+
+[MIT](LICENSE)

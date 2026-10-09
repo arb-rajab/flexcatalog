@@ -30,7 +30,7 @@ _Last updated: 2026-10-09. Maintained during the Dependabot clean-up pass; updat
 - `SECURITY.md` added 2026-10-09 (rescan cycle 2: the repo had no security policy GitHub recognises; `docs/project-memory/security.md` is design notes). It sends reporters to GitHub private vulnerability reporting, which was disabled here; the repo owner changed it through the API on 2026-10-09 and the read-back confirmed it (`enabled: true`).
 - Fork-PR workflow approval is `all_external_contributors` (set by the repo owner through the API on 2026-10-09, PUT 204, read back with the owner's token because the session's proxy blocks Actions paths).
 - Secret scanning for non-provider patterns and validity checks stay off: the owner's PATCH on 2026-10-09 returned 200, but the read-back still shows both `disabled`, so GitHub does not offer them on this user-owned public repo. Not retried.
-- No `LICENSE` file; it is the only one of the 12 repos without one (the others use MIT, AGPL-3.0 or all-rights-reserved). Picking a licence is the repo owner's call, so it is left to them and not re-raised.
+- `LICENSE` added 2026-10-09: MIT, chosen by the repo owner (until then this was the only one of the 12 repos without a licence file).
 
 ## Deferred (not re-raised each pass)
 
