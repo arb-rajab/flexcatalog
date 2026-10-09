@@ -17,7 +17,7 @@ permissions:
 jobs:
   build-and-test:
     name: build-and-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -58,7 +58,7 @@ jobs:
 
   docker-build:
     name: docker-build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -73,7 +73,7 @@ jobs:
 
   secret-scan:
     name: Secret scan (gitleaks)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -86,7 +86,7 @@ jobs:
 
   codeql:
     name: CodeQL (csharp)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       security-events: write
@@ -116,7 +116,7 @@ jobs:
 
   dependency-scan:
     name: Dependency scan (NuGet vulnerabilities)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
